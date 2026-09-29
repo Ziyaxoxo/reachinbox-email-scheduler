@@ -1,0 +1,508 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------
+   Design tokens — derived from the Figma screens
+   ------------------------------------------------------------------ */
+:root {
+  --page: #f7f8f7;
+  --card: #ffffff;
+  --input: #f4f5f4;
+  --line: #e7e9e7;
+  --line-strong: #d8dbd8;
+  --ink: #1b1e1c;
+  --ink-soft: #3d423f;
+  --ink-muted: #767b77;
+  --ink-faint: #9aa09b;
+  --brand: #22c55e;
+  --brand-strong: #16a34a;
+  --brand-deep: #15803d;
+  --brand-mint: #d6f4e2;
+  --radius-card: 10px;
+  --radius-ctl: 8px;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface-muted text-ink font-sans text-sm;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Focus ring used across interactive primitives */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    @apply outline-none ring-2 ring-brand-500/60 ring-offset-2 ring-offset-white rounded-[6px];
+  }
+}
+
+@layer components {
+  /* ---------------- Layout ---------------- */
+  .app-shell {
+    @apply min-h-screen bg-surface-muted;
+  }
+
+  .app-body {
+    @apply flex min-h-screen;
+  }
+
+  .app-main {
+    @apply flex-1 min-w-0 flex flex-col;
+  }
+
+  .app-content {
+    @apply flex-1 px-5 sm:px-6 py-5 sm:py-6;
+  }
+
+  .content-frame {
+    @apply w-full;
+  }
+
+  /* ---------------- Surfaces ---------------- */
+  .panel {
+    @apply bg-surface border border-line rounded-card shadow-card;
+  }
+
+  .panel-flat {
+    @apply bg-surface border border-line rounded-card;
+  }
+
+  /* ---------------- Top bar ---------------- */
+  .topbar {
+    @apply h-14 shrink-0 bg-surface border-b border-line flex items-center gap-3 px-4 sm:px-5;
+  }
+
+  .brand-mark {
+    @apply w-7 h-7 rounded-[7px] bg-brand-500 text-white grid place-items-center shrink-0;
+  }
+
+  .brand-word {
+    @apply text-ink-900 font-semibold text-[15px] tracking-[-0.01em];
+  }
+
+  .topbar-divider {
+    @apply h-4 w-px bg-line shrink-0;
+  }
+
+  /* ---------------- Search / filter bar ---------------- */
+  .searchbar {
+    @apply flex items-center gap-2 shrink-0;
+  }
+
+  .search-field {
+    @apply relative flex-1 max-w-[520px];
+  }
+
+  .search-field input {
+    @apply w-full h-9 pl-9 pr-3 bg-surface-input border border-line rounded-ctl
+           text-sm text-ink placeholder:text-ink-faint
+           focus:bg-surface focus:border-brand-500 focus:outline-none focus:ring-0;
+  }
+
+  .search-field > svg {
+    @apply absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none;
+  }
+
+  .icon-btn {
+    @apply h-9 w-9 shrink-0 grid place-items-center rounded-ctl border border-line
+           bg-surface text-ink-muted transition-colors
+           hover:text-ink hover:border-line-strong hover:bg-surface-muted
+           disabled:opacity-45 disabled:pointer-events-none;
+  }
+
+  /* ---------------- Sidebar ---------------- */
+  .sidebar {
+    @apply w-[268px] shrink-0 bg-surface border-r border-line flex flex-col
+           max-lg:w-[76px] max-lg:items-center;
+  }
+
+  .sidebar-head {
+    @apply p-4 max-lg:px-0 max-lg:py-4;
+  }
+
+  /* profile block */
+  .profile {
+    @apply w-full flex items-center gap-3 rounded-ctl px-2 py-2 text-left
+           hover:bg-surface-muted transition-colors max-lg:justify-center max-lg:px-0;
+  }
+
+  .profile-avatar {
+    @apply w-9 h-9 shrink-0 rounded-full overflow-hidden bg-brand-100
+           grid place-items-center text-brand-800 text-sm font-semibold;
+  }
+
+  .profile-name {
+    @apply text-[13px] font-medium text-ink truncate;
+  }
+
+  .profile-email {
+    @apply text-2xs text-ink-faint truncate;
+  }
+
+  /* primary compose action */
+  .sidebar-cta {
+    @apply w-full h-9 rounded-ctl border border-brand-200 bg-brand-50 text-brand-800
+           text-[13px] font-medium transition-colors
+           hover:bg-brand-100 hover:border-brand-300 max-lg:px-0 max-lg:text-[11px];
+  }
+
+  .nav-group-label {
+    @apply px-2 pt-4 pb-1.5 text-2xs font-medium uppercase tracking-[0.07em] text-ink-faint
+           max-lg:text-center max-lg:px-0 max-lg:text-[9px];
+  }
+
+  .nav-item {
+    @apply w-full flex items-center gap-2.5 h-9 px-2 rounded-ctl text-[13px] font-medium
+           text-ink-soft transition-colors hover:bg-surface-muted
+           max-lg:justify-center max-lg:px-0 max-lg:text-[11px];
+  }
+
+  .nav-item-active {
+    @apply bg-brand-50 text-brand-800 hover:bg-brand-50 hover:text-brand-800;
+  }
+
+  .nav-count {
+    @apply ml-auto min-w-[20px] h-5 px-1.5 rounded-pill bg-surface-sunken
+           text-2xs text-ink-muted grid place-items-center tabular-nums
+           max-lg:hidden;
+  }
+
+  .nav-count-active {
+    @apply bg-brand-100 text-brand-800;
+  }
+
+  /* ---------------- List rows ---------------- */
+  .list-head {
+    @apply hidden sm:flex items-center gap-3 px-4 py-2.5 border-b border-line
+           bg-surface-muted text-2xs font-medium uppercase tracking-[0.06em] text-ink-faint;
+  }
+
+  .list-row {
+    @apply flex items-start gap-3 px-4 py-3 border-b border-line last:border-b-0
+           transition-colors hover:bg-surface-muted;
+  }
+
+  .list-row-recipient {
+    @apply flex items-center gap-1 w-[132px] shrink-0 text-[13px] text-ink-900 max-sm:w-auto;
+  }
+
+  /* "+N" overflow marker for a campaign addressing more than one recipient. */
+  .list-row-recipient-more {
+    @apply shrink-0 text-[11px] tabular-nums text-ink-faint;
+  }
+
+  .list-row-main {
+    @apply min-w-0 flex-1;
+  }
+
+  .list-row-subject {
+    @apply text-[13px] font-medium text-ink-900 truncate;
+  }
+
+  .list-row-desc {
+    @apply text-xs text-ink-faint truncate mt-0.5;
+  }
+
+  .list-row-time {
+    @apply text-2xs text-ink-faint tabular-nums whitespace-nowrap shrink-0;
+  }
+
+  .list-row-action {
+    @apply w-7 h-7 shrink-0 grid place-items-center rounded-ctl text-ink-faint
+           transition-colors hover:text-ink hover:bg-surface-sunken;
+  }
+
+  /* ---------------- Chips / badges ---------------- */
+  .chip {
+    @apply inline-flex items-center gap-1 h-5 px-2 rounded-pill
+           text-2xs font-medium border whitespace-nowrap;
+  }
+
+  .chip-pending {
+    @apply bg-warn-50 text-warn-600 border-warn-100;
+  }
+
+  .chip-queued {
+    @apply bg-surface-sunken text-ink-700 border-line;
+  }
+
+  .chip-progress {
+    @apply bg-brand-50 text-brand-800 border-brand-100;
+  }
+
+  .chip-sent {
+    @apply bg-surface text-brand-800 border-brand-200;
+  }
+
+  .chip-failed {
+    @apply bg-danger-50 text-danger-600 border-danger-100;
+  }
+
+  .chip-muted {
+    @apply bg-surface-sunken text-ink-muted border-line;
+  }
+
+  /* recipient token (compose To field) */
+  .token {
+    @apply inline-flex items-center gap-1.5 h-7 pl-1 pr-1.5 rounded-md
+           bg-brand-50 border border-brand-100 text-brand-800 text-xs;
+  }
+
+  .token-avatar {
+    @apply w-5 h-5 rounded-full bg-brand-200 text-brand-900
+           grid place-items-center text-[9px] font-semibold shrink-0;
+  }
+
+  /* ---------------- Forms ---------------- */
+  .field-label {
+    @apply block text-2xs font-medium text-ink-muted mb-1.5;
+  }
+
+  .field {
+    @apply w-full h-9 px-3 bg-surface-input border border-line rounded-ctl
+           text-sm text-ink placeholder:text-ink-faint
+           focus:bg-surface focus:border-brand-500 focus:outline-none focus:ring-0;
+  }
+
+  .field-sm {
+    @apply h-8 px-2.5 text-xs;
+  }
+
+  .field-invalid {
+    @apply border-danger-500 bg-danger-50/40;
+  }
+
+  .field-error {
+    @apply mt-1 text-2xs text-danger-600;
+  }
+
+  .field-row {
+    @apply flex flex-wrap items-center gap-x-2 gap-y-1.5;
+  }
+
+  /* ---------------- Buttons ---------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-ctl
+           text-[13px] font-medium transition-colors
+           disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700;
+  }
+
+  .btn-outline {
+    @apply btn bg-surface text-ink-soft border border-line hover:bg-surface-muted hover:text-ink;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-muted hover:bg-surface-muted hover:text-ink;
+  }
+
+  .btn-brand-outline {
+    @apply btn bg-surface text-brand-800 border border-brand-200 hover:bg-brand-50;
+  }
+
+  .btn-sm {
+    @apply h-8 px-3 text-xs;
+  }
+
+  /* Google OAuth CTA (Figma: mint fill, green label) */
+  .btn-google {
+    @apply btn w-full bg-brand-100 text-brand-800 border border-brand-200
+           hover:bg-brand-200 hover:border-brand-300;
+  }
+
+  /* ---------------- Divider with inline label ---------------- */
+  .divider-text {
+    @apply flex items-center gap-3 my-4 select-none;
+  }
+
+  .divider-text::before,
+  .divider-text::after {
+    content: "";
+    @apply h-px flex-1 bg-line;
+  }
+
+  .divider-text span {
+    @apply text-2xs text-ink-faint;
+  }
+
+  /* ---------------- Auth ---------------- */
+  .auth-page {
+    @apply min-h-screen bg-surface grid place-items-center px-4 py-10;
+  }
+
+  .auth-card {
+    @apply w-full max-w-[336px] bg-surface-muted border border-line
+           rounded-card p-6 text-center;
+  }
+
+  .auth-title {
+    @apply text-lg font-semibold text-ink mb-4;
+  }
+
+  /* ---------------- Compose ---------------- */
+  .compose-head {
+    @apply flex items-center gap-2 px-4 h-14 border-b border-line shrink-0 bg-surface;
+  }
+
+  .compose-title {
+    @apply text-[15px] font-semibold text-ink-900;
+  }
+
+  .compose-body {
+    @apply flex-1 overflow-y-auto bg-surface;
+  }
+
+  .compose-inner {
+    @apply mx-auto w-full max-w-[820px] px-5 sm:px-8 py-6;
+  }
+
+  .compose-label {
+    @apply text-xs font-medium text-ink w-[86px] shrink-0 pt-2;
+  }
+
+  .compose-label-inline {
+    @apply text-xs font-medium text-ink-soft;
+  }
+
+  .compose-field {
+    @apply flex-1 min-w-0;
+  }
+
+  /* editor */
+  .editor-shell {
+    @apply border border-line rounded-ctl overflow-hidden bg-surface focus-within:border-brand-500;
+  }
+
+  .editor-toolbar {
+    @apply flex items-center gap-0.5 px-2 h-9 bg-surface-muted border-b border-line;
+  }
+
+  .editor-btn {
+    @apply w-7 h-7 grid place-items-center rounded-[6px] text-ink-muted
+           transition-colors hover:bg-surface-sunken hover:text-ink;
+  }
+
+  .editor-btn-active {
+    @apply bg-surface-sunken text-ink;
+  }
+
+  .editor-area {
+    @apply w-full px-4 py-3 text-sm text-ink leading-relaxed focus:outline-none min-h-[240px];
+  }
+
+  .editor-placeholder {
+    @apply text-ink-faint text-sm;
+  }
+
+  /* drop zone for recipient upload */
+  .dropzone {
+    @apply w-full border border-dashed border-line-strong rounded-ctl bg-surface-muted/60
+           px-4 py-5 text-center transition-colors hover:border-brand-400 hover:bg-brand-50/40;
+  }
+
+  .dropzone-active {
+    @apply border-brand-500 bg-brand-50;
+  }
+
+  /* ---------------- Popovers ---------------- */
+  .popover {
+    @apply absolute z-50 mt-2 w-[276px] bg-surface rounded-card border border-line
+           shadow-pop p-3;
+  }
+
+  .popover-option {
+    @apply w-full text-left px-2.5 py-2 rounded-[6px] text-[13px] text-ink-soft
+           transition-colors hover:bg-surface-muted hover:text-ink;
+  }
+
+  .popover-option-active {
+    @apply bg-brand-50 text-brand-800 hover:bg-brand-50;
+  }
+
+  /* ---------------- States ---------------- */
+  .state-wrap {
+    @apply flex flex-col items-center justify-center py-20 px-6 text-center;
+  }
+
+  .state-icon {
+    @apply w-12 h-12 rounded-full grid place-items-center mb-4;
+  }
+
+  .state-icon-muted {
+    @apply state-icon bg-surface-sunken text-ink-faint;
+  }
+
+  .state-icon-danger {
+    @apply state-icon bg-danger-50 text-danger-500;
+  }
+
+  .state-title {
+    @apply text-sm font-medium text-ink-900;
+  }
+
+  .state-body {
+    @apply text-xs text-ink-muted mt-1 max-w-[280px];
+  }
+
+  /* ---------------- Toast ---------------- */
+  .toast {
+    @apply pointer-events-auto flex items-start gap-2.5 w-full max-w-[340px]
+           bg-surface border border-line rounded-card shadow-pop p-3;
+  }
+
+  .toast-title {
+    @apply text-[13px] font-medium text-ink-900;
+  }
+
+  .toast-body {
+    @apply text-xs text-ink-muted mt-0.5;
+  }
+
+  /* ---------------- Skeleton ---------------- */
+  .sk {
+    @apply bg-surface-sunken rounded-[5px];
+  }
+
+  /* ---------------- Pagination ---------------- */
+  .pager {
+    @apply flex items-center justify-between gap-3 px-4 py-2.5 border-t border-line;
+  }
+
+  .pager-label {
+    @apply text-2xs text-ink-faint tabular-nums;
+  }
+}
+
+/* Minimal prose for the rich text editor surface */
+.rte :where(p) { @apply mb-2 last:mb-0; }
+.rte :where(ul) { @apply list-disc pl-5 mb-2; }
+.rte :where(ol) { @apply list-decimal pl-5 mb-2; }
+.rte :where(a) { @apply text-brand-700 underline; }
+.rte :where(strong) { @apply font-semibold; }
+.rte :where(h1,h2,h3) { @apply font-semibold text-ink-900 mb-2; }
+
+/* Toast entry animation */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast { animation: toast-in 0.18s ease-out; }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in { animation: fade-in 0.16s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .animate-fade-in { animation: none; }
+  * { transition-duration: 0.01ms !important; }
+}

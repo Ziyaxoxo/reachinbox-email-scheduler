@@ -1,0 +1,47 @@
+ ⚠ Port 3000 is in use, trying 3001 instead.
+ ⚠ Port 3001 is in use, trying 3002 instead.
+ ⨯ ./src/components/ComposeModal.tsx:20:1
+Module not found: Can't resolve '../lib/sanitize'
+[0m [90m 18 |[39m [36mimport[39m { [33mRichTextEditor[39m } [36mfrom[39m [32m"./RichTextEditor"[39m[33m;[39m[0m
+[0m [90m 19 |[39m [36mimport[39m { parseCsvContent } [36mfrom[39m [32m"../workers/csvParser"[39m[33m;[39m[0m
+[0m[31m[1m>[22m[39m[90m 20 |[39m [36mimport[39m { sanitizeEmailHtml } [36mfrom[39m [32m"../lib/sanitize"[39m[33m;[39m[0m
+[0m [90m    |[39m [31m[1m^[22m[39m[0m
+[0m [90m 21 |[39m[0m
+[0m [90m 22 |[39m [36minterface[39m [33mComposeModalProps[39m {[0m
+[0m [90m 23 |[39m   isOpen[33m:[39m boolean[33m;[39m[0m
+
+https://nextjs.org/docs/messages/module-not-found
+
+Import trace for requested module:
+./src/components/Dashboard.tsx
+./src/app/page.tsx
+ ⨯ ./src/components/ComposeModal.tsx:20:1
+Module not found: Can't resolve '../lib/sanitize'
+[0m [90m 18 |[39m [36mimport[39m { [33mRichTextEditor[39m } [36mfrom[39m [32m"./RichTextEditor"[39m[33m;[39m[0m
+[0m [90m 19 |[39m [36mimport[39m { parseCsvContent } [36mfrom[39m [32m"../workers/csvParser"[39m[33m;[39m[0m
+[0m[31m[1m>[22m[39m[90m 20 |[39m [36mimport[39m { sanitizeEmailHtml } [36mfrom[39m [32m"../lib/sanitize"[39m[33m;[39m[0m
+[0m [90m    |[39m [31m[1m^[22m[39m[0m
+[0m [90m 21 |[39m[0m
+[0m [90m 22 |[39m [36minterface[39m [33mComposeModalProps[39m {[0m
+[0m [90m 23 |[39m   isOpen[33m:[39m boolean[33m;[39m[0m
+
+https://nextjs.org/docs/messages/module-not-found
+
+Import trace for requested module:
+./src/components/Dashboard.tsx
+./src/app/page.tsx
+ ⨯ ./src/components/ComposeModal.tsx:20:1
+Module not found: Can't resolve '../lib/sanitize'
+[0m [90m 18 |[39m [36mimport[39m { [33mRichTextEditor[39m } [36mfrom[39m [32m"./RichTextEditor"[39m[33m;[39m[0m
+[0m [90m 19 |[39m [36mimport[39m { parseCsvContent } [36mfrom[39m [32m"../workers/csvParser"[39m[33m;[39m[0m
+[0m[31m[1m>[22m[39m[90m 20 |[39m [36mimport[39m { sanitizeEmailHtml } [36mfrom[39m [32m"../lib/sanitize"[39m[33m;[39m[0m
+[0m [90m    |[39m [31m[1m^[22m[39m[0m
+[0m [90m 21 |[39m[0m
+[0m [90m 22 |[39m [36minterface[39m [33mComposeModalProps[39m {[0m
+[0m [90m 23 |[39m   isOpen[33m:[39m boolean[33m;[39m[0m
+
+https://nextjs.org/docs/messages/module-not-found
+
+Import trace for requested module:
+./src/components/Dashboard.tsx
+./src/app/page.tsx

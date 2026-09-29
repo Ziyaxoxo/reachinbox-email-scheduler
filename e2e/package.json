@@ -1,0 +1,24 @@
+{
+  "name": "reachinbox-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests spanning the ReachInbox API, workers and dashboard",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "seed": "tsx scripts/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.23.1",
+    "ioredis": "^5.11.1",
+    "pg": "^8.23.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,24 @@
+node_modules/
+dist/
+coverage/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs / runtime artefacts
+*.log
+npm-debug.log*
+server.log
+server.err
+dev.log
+dev.err
+tsconfig.tsbuildinfo
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
