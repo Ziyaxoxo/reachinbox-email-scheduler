@@ -12,7 +12,17 @@ import { enqueueDelayedJob } from "../queue/delayedEnqueue.js";
 import { enqueueOutboxEvent } from "../queue/outboxPublisher.js";
 import { sanitizeEmailBody } from "./sanitize/html.js";
 import { logger } from "../observability/logger.js";
-import { NotFoundError } from "../domain/errors.js";
+import { NotFoundError, ValidationError } from "../domain/errors.js";
+
+/**
+ * How far in the past a start time may be and still be accepted.
+ *
+ * Small but not zero: clients submit whole minutes, so a user picking the
+ * current minute is legitimately a few seconds behind. Anything older than this
+ * is a real request to schedule something that has already passed, which would
+ * send immediately and quietly turn a scheduled campaign into an instant one.
+ */
+const START_AT_PAST_GRACE_MS = 60_000;
 
 function isUniqueViolation(error: unknown): boolean {
   return (
@@ -53,6 +63,20 @@ export async function createSchedule(input: CreateScheduleInput) {
   } = input;
 
   const key = idempotencyKey?.trim() || nanoid();
+
+  // Checked before the idempotency replay lookup on purpose: a replay of an
+  // already-accepted key must keep returning the original resource even once
+  // its start time is in the past, or a client retrying a successful create
+  // after a network blip would be told its request was invalid.
+  const startAtMs = startAt.getTime();
+  if (Number.isNaN(startAtMs)) {
+    throw new ValidationError("startAt must be a valid date");
+  }
+  if (startAtMs < Date.now() - START_AT_PAST_GRACE_MS) {
+    throw new ValidationError("startAt must not be in the past", {
+      startAt: startAt.toISOString(),
+    });
+  }
 
   // The browser is not the security boundary: a direct API caller can post
   // arbitrary markup, and the stored body is rendered in mail clients.

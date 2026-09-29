@@ -3,6 +3,7 @@ import { recipients, schedules, outboxEvents } from "../db/schema.js";
 import { and, eq, lte, inArray, lt, sql } from "drizzle-orm";
 import { emailQueue } from "./connection.js";
 import { enqueueOutboxEvent, republishEmailJob } from "./outboxPublisher.js";
+import { refreshScheduleStatus } from "../db/repositories/scheduleRepo.js";
 import { logger } from "../observability/logger.js";
 import { metrics } from "../observability/metrics.js";
 
@@ -21,6 +22,13 @@ export async function reconcilePendingWork(): Promise<void> {
 
   try {
     const now = new Date();
+
+    // 0. Repair parent statuses before anything else. A schedule whose
+    //    recipients have all finished but whose own status is still
+    //    non-terminal is a crash-window artefact: the recipient rows are the
+    //    source of truth, so recompute rather than requeue. This is a read-only
+    //    correction and must not depend on there being any queue work to do.
+    await repairScheduleStatuses();
 
     // 1. Pending future + due work that has no live job.
     //    `sending` rows whose lease expired are included: the worker crashed
@@ -153,6 +161,49 @@ export async function reconcilePendingWork(): Promise<void> {
     log.error({ err: error }, "Reconciliation failed");
   } finally {
     await republishPendingOutbox();
+  }
+}
+
+/**
+ * Recompute the status of any schedule that is not terminal but whose
+ * recipients all are.
+ *
+ * Without this, a schedule whose last worker died between writing a recipient
+ * and rolling up the parent would sit in `queued` forever, and the dashboard
+ * would claim a finished campaign was still waiting. Bounded so a large
+ * backlog of stuck rows cannot turn a 60-second scan into a long query.
+ */
+async function repairScheduleStatuses(): Promise<void> {
+  try {
+    const stuck = await db
+      .selectDistinct({ id: schedules.id })
+      .from(schedules)
+      .innerJoin(recipients, eq(recipients.scheduleId, schedules.id))
+      .where(
+        and(
+          inArray(schedules.status, ["scheduled", "queued", "sending"]),
+          sql`NOT EXISTS (
+            SELECT 1 FROM recipients r
+            WHERE r.schedule_id = ${schedules.id}
+              AND r.status NOT IN ('sent', 'failed', 'cancelled')
+          )`,
+        ),
+      )
+      .limit(BATCH_SIZE);
+
+    if (stuck.length === 0) return;
+
+    let repaired = 0;
+    for (const row of stuck) {
+      const changed = await refreshScheduleStatus(row.id);
+      if (changed) repaired++;
+    }
+
+    if (repaired > 0) {
+      logger.info({ repaired }, "Repaired schedule statuses from recipients");
+    }
+  } catch (error) {
+    logger.error({ err: error }, "Schedule status repair failed");
   }
 }
 

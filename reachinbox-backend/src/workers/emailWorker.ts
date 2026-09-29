@@ -16,6 +16,7 @@ import { logger } from "../observability/logger.js";
 import { metrics } from "../observability/metrics.js";
 import { env } from "../config/env.js";
 import { isTerminalRecipientStatus } from "../domain/stateMachine.js";
+import { refreshScheduleStatus } from "../db/repositories/scheduleRepo.js";
 import { registerWorker } from "./gracefulShutdown.js";
 
 const smtpTransport = getSmtpTransport();
@@ -140,6 +141,11 @@ export const emailWorker = new Worker<EmailJobData>(
       return;
     }
 
+    // The recipient is claimed and in flight, so the parent is `sending`. Done
+    // before the SMTP contact so a slow or hanging provider still shows the
+    // campaign as actively delivering rather than merely queued.
+    await refreshScheduleStatus(scheduleId);
+
     // 3. Cheap gate first: if the sender is still inside its minimum-delay
     //    window, defer without touching hourly capacity. Reserving an hourly
     //    slot for work that cannot send yet inflates the window counter and can
@@ -249,6 +255,8 @@ export const emailWorker = new Worker<EmailJobData>(
         .set({ status: "sent", updatedAt: new Date() })
         .where(eq(recipients.id, recipientId));
 
+      await refreshScheduleStatus(scheduleId);
+
       // Derived read-model update, published outbox-style.
       await enqueueOutboxEventForRecipient({
         recipientId,
@@ -335,6 +343,14 @@ async function failRecipient(recipientId: string, _code: string) {
     .update(recipients)
     .set({ status: "failed", updatedAt: new Date() })
     .where(eq(recipients.id, recipientId));
+
+  // The last recipient failing is what makes a campaign `failed`, so the parent
+  // has to be rolled up here as well as on the success path.
+  const row = await db.query.recipients.findFirst({
+    where: eq(recipients.id, recipientId),
+    columns: { scheduleId: true },
+  });
+  if (row) await refreshScheduleStatus(row.scheduleId);
 }
 
 async function enqueueOutboxEventForRecipient(input: {
