@@ -3,6 +3,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# API_URL is read at build time by next.config.js, so it must be a build arg
+ARG API_URL=http://localhost:3000
+ENV API_URL=$API_URL
+
 COPY package.json package-lock.json* ./
 # Use npm install instead of npm ci to tolerate lockfile drift across npm versions
 RUN npm install
