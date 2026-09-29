@@ -1,36 +1,21 @@
-const {
-  RUNTIME_API_URL_PLACEHOLDER,
-} = require("./scripts/api-url-placeholder.js");
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  async rewrites() {
-    /**
-     * The proxy target is resolved from `process.env.API_URL` in development,
-     * where `next dev` re-reads this file on every server start.
-     *
-     * A production build cannot do the same. `next build` compiles these
-     * rewrites into `.next/routes-manifest.json` and `next start` serves the
-     * compiled table without ever re-reading `next.config.js`, so a destination
-     * read from the environment here is frozen with whatever the value happened
-     * to be during the build. Render only injects environment variables at
-     * runtime, so the build emits a placeholder and
-     * `scripts/resolve-api-url.mjs` substitutes the real origin on container
-     * start, just before `next start`.
-     */
-    const apiOrigin =
-      process.env.NODE_ENV === "development"
-        ? process.env.API_URL || "http://localhost:3000"
-        : RUNTIME_API_URL_PLACEHOLDER;
 
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: `${apiOrigin}/api/v1/:path*`,
-      },
-    ];
-  },
+  /**
+   * No `rewrites()` here on purpose.
+   *
+   * A rewrite to an external origin looked like the natural way to proxy
+   * /api/v1 to the backend, but Next forwards the Authorization header and
+   * silently drops Cookie. Cookie-based session auth therefore cannot work
+   * through it: the session cookie never reached the API and every
+   * authenticated request returned 401.
+   *
+   * The proxy now lives in src/app/api/v1/[...path]/route.ts, which forwards
+   * headers explicitly and reads API_URL per request. That also means the build
+   * no longer needs to know the API origin, so there is no build argument and no
+   * placeholder to resolve at container start.
+   */
 };
 
 module.exports = nextConfig;
