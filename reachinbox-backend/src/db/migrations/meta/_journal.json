@@ -15,6 +15,13 @@
       "when": 1790618048073,
       "tag": "0001_misty_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790717962183,
+      "tag": "0002_petite_ravenous",
+      "breakpoints": true
     }
   ]
 }

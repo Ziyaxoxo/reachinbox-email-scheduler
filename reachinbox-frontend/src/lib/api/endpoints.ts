@@ -13,6 +13,28 @@ export const api = {
   auth: {
     me: () => apiClient.get<User>("/me"),
     logout: () => apiClient.post<{ status: string }>("/auth/logout", {}),
+
+    /**
+     * Email + password sign-in.
+     *
+     * The server sets an HttpOnly session cookie, so there is no token to hold
+     * in JS state and nothing to attach to later requests.
+     */
+    login: (credentials: { email: string; password: string }) =>
+      apiClient.post<{ user: User }>("/auth/login", credentials),
+
+    register: (details: { email: string; password: string; name?: string }) =>
+      apiClient.post<{ user: User }>("/auth/register", details),
+
+    /**
+     * currentPassword is required only when the account already has one; the
+     * server decides, and reports CURRENT_PASSWORD_REQUIRED if it is missing.
+     */
+    changePassword: (details: { currentPassword?: string; newPassword: string }) =>
+      apiClient.post<{ status: string }>("/auth/change-password", details),
+
+    updateProfile: (patch: { name?: string; avatar?: string | null }) =>
+      apiClient.patch<User>("/me", patch),
   },
 
   schedules: {

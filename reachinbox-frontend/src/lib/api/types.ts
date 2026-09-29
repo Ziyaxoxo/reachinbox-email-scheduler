@@ -3,6 +3,12 @@ export interface User {
   email: string;
   name: string;
   avatar?: string | null;
+  /**
+   * Whether a password is set on this account. The server never sends the hash
+   * itself, just this flag, which is what Settings needs to decide between
+   * "set a password" and "change your password".
+   */
+  hasPassword?: boolean;
 }
 
 export interface Schedule {

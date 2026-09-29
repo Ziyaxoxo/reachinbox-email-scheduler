@@ -2,6 +2,11 @@ node_modules/
 dist/
 coverage/
 
+# Build-time copy of src/db/migrations, produced by the build script so the
+# container can apply migrations at boot. Leading slash matters: it scopes the
+# rule to the package root, leaving the tracked src/db/migrations alone.
+/migrations/
+
 # Secrets — never commit
 .env
 .env.*

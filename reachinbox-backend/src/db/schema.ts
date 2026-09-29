@@ -58,6 +58,11 @@ export const users = pgTable(
     email: varchar("email", { length: 255 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     avatar: text("avatar"),
+    // Nullable: a Google-only account has no password and can never set one
+    // without first proving ownership of the address, which the OAuth
+    // callback does. Presence of a hash is what marks an account as able to
+    // sign in with a password.
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -100,6 +100,19 @@ class ApiClient {
     });
   }
 
+  /**
+   * PATCH, for partial updates.
+   *
+   * No idempotency key: the callers are user-initiated profile edits rather than
+   * retried creates, and repeating one is harmless by construction.
+   */
+  async patch<T>(endpoint: string, body: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE" });
   }

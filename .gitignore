@@ -1,0 +1,8 @@
+# Nested repositories that are not part of this project.
+# Each has its own .git, so without this an `git add -A` would try to record
+# them as gitlinks (submodule-style entries) rather than as files.
+portfolio/
+
+# Local editor / OS noise that the per-package .gitignore files do not cover.
+.DS_Store
+Thumbs.db

@@ -1,10 +1,102 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { api } from "../lib/api/endpoints";
+import { ApiException } from "../lib/api/client";
+import { useToastStore } from "../store/toastStore";
+
+type Mode = "signin" | "signup";
+
+/**
+ * Turns an ApiException into a sentence worth showing a person.
+ *
+ * The server distinguishes a wrong password from an account that only has
+ * Google sign-in, and that distinction is the whole reason the second path
+ * exists, so its wording is passed through rather than flattened into
+ * "something went wrong".
+ */
+function errorMessage(error: unknown): string {
+  if (error instanceof ApiException) {
+    if (error.code === "PASSWORD_LOGIN_UNAVAILABLE") return error.message;
+    if (error.code === "EMAIL_TAKEN") return error.message;
+    if (error.code === "WEAK_PASSWORD") return error.message;
+    if (error.code === "NETWORK_ERROR") {
+      return "Could not reach the server. Check your connection and try again.";
+    }
+    return error.message;
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export function LoginCard() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [mode, setMode] = useState<Mode>("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isSignUp = mode === "signup";
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    // Cleared rather than carried over: an error about a wrong password is
+    // actively misleading once the form has changed underneath it.
+    setError(null);
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (isSubmitting) return;
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError("Enter your email and password.");
+      return;
+    }
+
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      if (isSignUp) {
+        await api.auth.register({
+          email: trimmedEmail,
+          password,
+          name: name.trim() || undefined,
+        });
+        addToast({
+          type: "success",
+          title: "Account created",
+          message: "You are signed in.",
+        });
+      } else {
+        await api.auth.login({ email: trimmedEmail, password });
+      }
+
+      // The session cookie is already set by then. Invalidate the cached /me
+      // so the app fetches the new identity instead of the 401 that started
+      // the visitor on the login page.
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      router.push("/");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1 className="auth-title">Login</h1>
+        <h1 className="auth-title">{isSignUp ? "Create account" : "Login"}</h1>
 
         <a href="/api/v1/auth/google" className="btn-google">
           <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
@@ -25,47 +117,104 @@ export function LoginCard() {
               fill="#EA4335"
             />
           </svg>
-          Login with Google
+          Continue with Google
         </a>
 
         <div className="divider-text">
-          <span>or sign up through email</span>
+          <span>or with email</span>
         </div>
 
-        {/* Decorative — Google OAuth is the active sign-in path. */}
-        <div className="space-y-2.5 text-left">
+        <form onSubmit={handleSubmit} noValidate className="space-y-2.5 text-left">
+          {isSignUp ? (
+            <div>
+              <label className="field-label" htmlFor="login-name">
+                Name <span className="text-ink-faint font-normal">(optional)</span>
+              </label>
+              <input
+                id="login-name"
+                className="field"
+                type="text"
+                placeholder="Ada Lovelace"
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+          ) : null}
+
           <div>
-            <label className="sr-only" htmlFor="login-email">
+            <label className="field-label" htmlFor="login-email">
               Email ID
             </label>
             <input
               id="login-email"
-              className="field"
+              className={`field ${error ? "field-invalid" : ""}`}
               type="email"
-              placeholder="Email ID"
+              placeholder="you@example.com"
               autoComplete="username"
-              disabled
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? "login-error" : undefined}
             />
           </div>
 
           <div>
-            <label className="sr-only" htmlFor="login-password">
+            <label className="field-label" htmlFor="login-password">
               Password
             </label>
             <input
               id="login-password"
-              className="field"
+              className={`field ${error ? "field-invalid" : ""}`}
               type="password"
-              placeholder="Password"
-              autoComplete="current-password"
-              disabled
+              placeholder={isSignUp ? "At least 8 characters" : "••••••••"}
+              autoComplete={isSignUp ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isSubmitting}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? "login-error" : undefined}
             />
           </div>
 
-          <button className="btn-primary w-full" type="button" disabled>
-            Login
+          {error ? (
+            <p
+              id="login-error"
+              role="alert"
+              className="flex items-start gap-1.5 text-2xs text-danger-600"
+            >
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+              <span>{error}</span>
+            </p>
+          ) : null}
+
+          <button className="btn-primary w-full" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                {isSignUp ? "Creating account" : "Signing in"}
+              </>
+            ) : isSignUp ? (
+              "Create account"
+            ) : (
+              "Login"
+            )}
           </button>
-        </div>
+
+          <p className="text-2xs text-ink-faint text-center pt-1">
+            {isSignUp ? "Already have an account?" : "No account yet?"}{" "}
+            <button
+              type="button"
+              onClick={() => switchMode(isSignUp ? "signin" : "signup")}
+              className="text-brand-700 font-medium hover:underline"
+              disabled={isSubmitting}
+            >
+              {isSignUp ? "Sign in" : "Create one"}
+            </button>
+          </p>
+        </form>
       </div>
 
       <p className="absolute bottom-6 text-2xs text-ink-faint">

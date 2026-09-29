@@ -1,6 +1,7 @@
 import { createServer } from "./api/server.js";
 import { env } from "./config/env.js";
 import { logger } from "./observability/logger.js";
+import { runMigrations } from "./db/migrate.js";
 import { ensureIndex } from "./services/elasticsearch/client.js";
 import { reconcilePendingWork } from "./queue/reconciliation.js";
 import { runRetention } from "./services/retention.js";
@@ -15,6 +16,12 @@ async function main() {
   const isWorker = process.argv.includes("--worker");
 
   logger.info({ env: env.NODE_ENV, isWorker }, "Starting ReachInbox backend");
+
+  // Schema before anything that reads it. Reconciliation, the workers and every
+  // request path query tables that this image's migrations create, so applying
+  // them first is what keeps a freshly deployed container from serving traffic
+  // against a database that is a version behind.
+  await runMigrations();
 
   // Search index is derived state: never block startup on it.
   await ensureIndex();

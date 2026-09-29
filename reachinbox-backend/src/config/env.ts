@@ -32,6 +32,12 @@ const envSchema = z.object({
   API_RATE_LIMIT_MAX: z.string().transform(Number).default("100"),
   API_RATE_LIMIT_WINDOW_MS: z.string().transform(Number).default("60000"),
 
+  // Much tighter than the general API limit, and separate from it: guessing a
+  // password is a small, high-value attack that a 100-per-minute budget on all
+  // endpoints would barely slow down.
+  AUTH_RATE_LIMIT_MAX: z.string().transform(Number).default("10"),
+  AUTH_RATE_LIMIT_WINDOW_MS: z.string().transform(Number).default("900000"),
+
   WORKER_CONCURRENCY: z.string().transform(Number).default("5"),
 
   // BullMQ dashboard (operator-only, never public).

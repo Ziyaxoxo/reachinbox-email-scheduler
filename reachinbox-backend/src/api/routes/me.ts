@@ -35,6 +35,7 @@ function serialize(user: {
   email: string;
   name: string;
   avatar?: string | null;
+  passwordHash?: string | null;
 }) {
   return {
     id: user.id,
@@ -42,11 +43,28 @@ function serialize(user: {
     name: user.name,
     // Previously omitted, so the client could never render a stored photo.
     avatar: user.avatar ?? null,
+    // Whether a password is set, never the hash itself: the client needs this
+    // to know whether changing a password must ask for the current one, and a
+    // presence flag is all that requires.
+    hasPassword: Boolean(user.passwordHash),
   };
 }
 
-meRouter.get("/", (req, res) => {
-  res.json(serialize(req.user!));
+meRouter.get("/", async (_req, res, next) => {
+  try {
+    const row = await db.query.users.findFirst({
+      where: eq(users.id, _req.user!.id),
+    });
+    if (!row) {
+      res.status(401).json({
+        error: { code: "SESSION_EXPIRED", message: "Account no longer exists" },
+      });
+      return;
+    }
+    res.json(serialize(row));
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -85,6 +103,7 @@ meRouter.patch("/", validate(updateProfileSchema), async (req, res, next) => {
         email: users.email,
         name: users.name,
         avatar: users.avatar,
+        passwordHash: users.passwordHash,
       });
 
     const row = updated[0];

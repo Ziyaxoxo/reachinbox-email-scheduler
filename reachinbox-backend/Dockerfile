@@ -22,6 +22,10 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+# Drizzle reads migration .sql files from disk at runtime, and they are not
+# part of the TypeScript build output. Copied to ./migrations to match the
+# folder src/db/migrate.ts resolves from process.cwd().
+COPY --from=builder /app/src/db/migrations ./migrations
 
 USER node
 

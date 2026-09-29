@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { PenLine, Calendar, Send, Inbox, ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../hooks/useAuth";
+import { AccountMenuItems } from "./AccountMenu";
 
 export function Sidebar({
   onCompose,
@@ -19,7 +20,7 @@ export function Sidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout, isLoggingOut } = useAuth();
+  const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const items = [
@@ -79,17 +80,16 @@ export function Sidebar({
                   onClick={() => setMenuOpen(false)}
                   aria-hidden="true"
                 />
-                <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-surface border border-line rounded-ctl shadow-pop p-1 animate-fade-in">
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      logout();
-                    }}
-                    disabled={isLoggingOut}
-                    className="w-full text-left px-2.5 py-2 rounded-[6px] text-[13px] text-ink-soft hover:bg-surface-muted hover:text-ink transition-colors"
-                  >
-                    Sign out
-                  </button>
+                <div
+                  role="menu"
+                  aria-label="Account"
+                  className="absolute z-20 left-0 right-0 top-full mt-1 bg-surface border border-line rounded-ctl shadow-pop p-1 animate-fade-in"
+                >
+                  {/*
+                    Shared with the header's account menu so the two cannot
+                    drift apart. This one previously offered Sign out only.
+                  */}
+                  <AccountMenuItems onNavigate={() => setMenuOpen(false)} />
                 </div>
               </>
             ) : null}
