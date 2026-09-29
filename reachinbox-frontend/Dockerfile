@@ -18,7 +18,8 @@ WORKDIR /app
 RUN apk add --no-cache curl
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev && npm cache clean --force
+# Use npm install instead of npm ci to tolerate lockfile drift across npm versions
+RUN npm install --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
