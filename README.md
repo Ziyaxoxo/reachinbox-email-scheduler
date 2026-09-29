@@ -1,81 +1,149 @@
-# ReachInbox — Email Scheduler
+# ReachInbox: Email Scheduler
 
-Bulk email scheduling with durable delivery guarantees: delayed sends, per-sender
-rate limiting, crash recovery, and a transactional outbox for Elasticsearch and
-Slack notifications.
+Bulk email scheduling with durable delivery guarantees. Schedule a campaign,
+and it sends on time, respects rate limits, and recovers cleanly from a crash
+or restart.
 
-| | |
-|---|---|
-| **Backend** | Express + TypeScript, PostgreSQL, Drizzle ORM, BullMQ/Redis |
-| **Frontend** | Next.js + React + TypeScript + Tailwind, React Query |
-| **Auth** | Google OAuth, HttpOnly session cookie (HS256 JWT) |
-| **Default ports** | API `3000`, web `3001`, PostgreSQL `5432`, Redis `6379`, ES `9200` |
+- **Backend:** Express + TypeScript, PostgreSQL, Drizzle ORM, BullMQ, Redis
+- **Frontend:** Next.js, React, TypeScript, Tailwind CSS, React Query
+- **Auth:** Google OAuth with an HttpOnly session cookie
+- **Ports:** API 3000, web 3001, PostgreSQL 5432, Redis 6379, Elasticsearch 9200
+
+---
+
+## Quick start
+
+You need **Node.js 20+**, **Docker Desktop**, and a terminal.
+
+### Step 1. Get the code and fill in secrets
+
+```powershell
+cd reachinbox-backend
+Copy-Item .env.example .env
+notepad .env
+```
+
+Fill in every `replace-with...` value. See
+[Section 3](#3-ethereal-email-and-environment-variables) for exactly what goes
+where and how to generate it.
+
+### Step 2. Start the backend
+
+```powershell
+docker-compose up -d --build
+```
+
+Wait about 30 seconds for the containers to become healthy:
+
+```powershell
+docker-compose ps
+```
+
+Check it is responding:
+
+```powershell
+Invoke-WebRequest http://localhost:3000/health/live
+```
+
+### Step 3. Start the frontend
+
+Open a **second** terminal:
+
+```powershell
+cd reachinbox-frontend
+npm install
+npm run dev
+```
+
+### Step 4. Open the app
+
+Go to **http://localhost:3001** and sign in with Google.
+
+That is the whole loop. Everything below is reference material.
+
+---
+
+## Table of contents
+
+1. [Running the backend](#1-running-the-backend)
+2. [Running the frontend](#2-running-the-frontend)
+3. [Ethereal Email and environment variables](#3-ethereal-email-and-environment-variables)
+4. [Architecture overview](#4-architecture-overview)
+5. [How scheduling works](#5-how-scheduling-works)
+6. [How persistence on restart is handled](#6-how-persistence-on-restart-is-handled)
+7. [How rate limiting and concurrency work](#7-how-rate-limiting-and-concurrency-work)
+8. [Backend features](#8-backend-features)
+9. [Frontend features](#9-frontend-features)
+10. [Testing](#10-testing)
+11. [Troubleshooting](#11-troubleshooting)
+12. [License](#12-license)
 
 ---
 
 ## 1. Running the backend
 
-### Option A — Docker Compose (recommended)
+### Option A: Docker Compose (recommended)
 
-This starts every dependency **and** both application processes:
+This starts the databases and the application together.
 
 ```powershell
 cd reachinbox-backend
 docker-compose up -d --build
 ```
 
-| Service | Purpose |
+| Service | What it does |
 |---|---|
 | `postgres` | Source of truth for schedules, recipients, attempts, outbox |
-| `redis` | BullMQ queues, rate-limit counters, locks |
-| `elasticsearch` | Search index (derived state — never blocks startup) |
-| `api` | Express HTTP server on `:3000` |
-| `worker` ×2 | BullMQ consumers (send worker + outbox worker) |
+| `redis` | Queues, rate limit counters, locks |
+| `elasticsearch` | Search index (derived data, never blocks startup) |
+| `api` | Express HTTP server on port 3000 |
+| `worker` (2 copies) | The processes that actually send email |
 
-Workers are **not** API replicas. `docker-compose.yml` launches them with:
+Workers are separate from the API. Starting more API replicas does not increase
+your send rate. The worker entry point is:
 
 ```yaml
 command: ["node", "dist/index.js", "--worker"]
 environment:
-  - WORKER_MODE=1        # workers serve no HTTP, so the healthcheck must not curl
+  - WORKER_MODE=1
   - WORKER_CONCURRENCY=5
 ```
 
-`index.ts` only dynamically imports the workers under `--worker`, so adding API
-replicas never silently multiplies your send concurrency.
+`index.ts` only loads the worker code when `--worker` is passed, so an API
+process can never accidentally start sending email.
 
-### Option B — Local dev server
+### Option B: Local dev server
 
-Useful when you want hot reload against containers:
+Use this when you want hot reload while the databases still run in Docker.
 
 ```powershell
 cd reachinbox-backend
-docker-compose up -d postgres redis elasticsearch   # deps only
+docker-compose up -d postgres redis elasticsearch
 npm install
-npm run dev                                          # tsx watch src/index.ts
+npm run dev
 ```
 
-### Verify it's alive
+### Check it is alive
 
 ```powershell
 Invoke-WebRequest http://localhost:3000/health/live
 Invoke-WebRequest http://localhost:3000/health/ready
 ```
 
-BullMQ dashboard (authenticated, read-only by default):
+**BullMQ dashboard** (operator only, read only by default):
 
 ```
-http://localhost:3000/admin/queues?token=<DASHBOARD_TOKEN>
+http://localhost:3000/admin/queues?token=YOUR_DASHBOARD_TOKEN
 ```
 
-### Useful backend scripts
+### Useful commands
 
 ```powershell
-npm run typecheck        # tsc --noEmit
-npm run test             # unit + concurrency tests against real Redis/Postgres
-npm run db:migrate       # apply Drizzle migrations
-npm run db:studio        # Drizzle Studio
-npm run build            # tsc -p tsconfig.build.json
+npm run typecheck     # type check only
+npm test              # unit tests against real Redis and PostgreSQL
+npm run db:migrate    # apply database migrations
+npm run db:studio     # open Drizzle Studio
+npm run build         # compile to dist/
 ```
 
 ---
@@ -85,385 +153,460 @@ npm run build            # tsc -p tsconfig.build.json
 ```powershell
 cd reachinbox-frontend
 npm install
-npm run dev               # Next.js on http://localhost:3001
+npm run dev
 ```
 
 Open **http://localhost:3001**.
 
-The frontend needs the backend API reachable, and that's it. `next.config.js`
-proxies `/api/v1/*` to the backend:
+The frontend needs only the API URL. `next.config.js` forwards every
+`/api/v1/*` request to the backend:
 
 ```js
 destination: `${process.env.API_URL || "http://localhost:3000"}/api/v1/:path*`
 ```
 
-So `API_URL` only needs setting if the API is not on `localhost:3000`.
+Because the default is already `localhost:3000`, you normally need no
+configuration. Set `API_URL` only if the backend runs somewhere else.
 
 ```powershell
-# reachinbox-frontend/.env.local  (only if the API is elsewhere)
+# reachinbox-frontend/.env.local
 API_URL=http://localhost:3000
 ```
 
-> `reachinbox-frontend/.env.example` lists `NEXTAUTH_*` and `GOOGLE_*` values.
-> They are **not used** — OAuth runs entirely on the backend and the frontend
-> reads no `process.env` values besides the `API_URL` above. Safe to ignore.
+> `reachinbox-frontend/.env.example` also lists `NEXTAUTH_*` and `GOOGLE_*`
+> values. These are **not used**. OAuth happens entirely on the backend, and the
+> frontend reads no environment variables other than `API_URL`. You can ignore
+> that file.
 
-### Useful frontend scripts
+### Useful commands
 
 ```powershell
-npm run typecheck
-npm test            # vitest unit tests
-npm run build
+npm run typecheck   # type check only
+npm test            # unit tests
+npm run build       # production build
 ```
 
 ---
 
-## 3. Ethereal Email + environment variables
+## 3. Ethereal Email and environment variables
 
-Ethereal is a free, **fake** SMTP service for testing. It accepts mail and shows
-it in a web inbox — it does **not** deliver to real inboxes. Perfect for
-development; swap in SES/Postmark/Resend for production.
+### What is Ethereal
 
-### Get credentials
+Ethereal is a free testing email service. It accepts your email and shows it in
+a web inbox so you can confirm sending works. It does **not** deliver to real
+inboxes.
 
-1. Sign up at **https://ethereal.email** (no card required)
-2. Create an account under *Accounts* → *Create new account*
-3. Copy the **SMTP username** and **password** Ethereal generates
+Good for development. For production, use a real provider such as AWS SES,
+Postmark, or Resend.
 
-### Generate your secrets
+### Get Ethereal credentials
+
+1. Sign up at **https://ethereal.email** (no credit card needed)
+2. Open **Accounts** then **Create new account**
+3. Copy the **SMTP username** and **SMTP password** it gives you
+
+### Generate secure secrets
+
+Run these to create random values:
 
 ```powershell
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-### Required variables
+### The variables
 
-`src/config/env.ts` validates these at boot and exits with a clear message if
-any are missing.
+`src/config/env.ts` checks these when the app starts. If a required one is
+missing, the app prints exactly which and exits.
 
-| Variable | Required | Notes |
+**Required (the app will not start without these):**
+
+| Variable | What to put |
+|---|---|
+| `DATABASE_URL` | `postgresql://reachinbox:reachinbox@localhost:5432/reachinbox` |
+| `REDIS_URL` | `redis://:reachinbox@localhost:6379/0` |
+| `ELASTICSEARCH_URL` | `http://localhost:9200` |
+| `GOOGLE_CLIENT_ID` | From Google Cloud console, OAuth credentials |
+| `GOOGLE_CLIENT_SECRET` | From the same place |
+| `GOOGLE_CALLBACK_URL` | `http://localhost:3000/api/v1/auth/google/callback` |
+| `SLACK_CLIENT_ID` | From https://api.slack.com/apps |
+| `SLACK_CLIENT_SECRET` | From the same place |
+| `JWT_SECRET` | At least 32 random characters. Signs your login cookie. |
+| `ENCRYPTION_KEY` | A 32 byte base64 key. Encrypts stored Slack tokens. |
+| `SMTP_USER` | Your Ethereal username (an email address) |
+| `SMTP_PASS` | Your Ethereal password |
+
+**Optional (these have sensible defaults):**
+
+| Variable | Default | Notes |
 |---|---|---|
-| `DATABASE_URL` | ✅ | e.g. `postgresql://reachinbox:reachinbox@localhost:5432/reachinbox` |
-| `REDIS_URL` | ✅ | e.g. `redis://:reachinbox@localhost:6379/0` |
-| `ELASTICSEARCH_URL` | ✅ | e.g. `http://localhost:9200` |
-| `GOOGLE_CLIENT_ID` | ✅ | Google Cloud console → OAuth credentials |
-| `GOOGLE_CLIENT_SECRET` | ✅ | Redirect URI: `http://localhost:3000/api/v1/auth/google/callback` |
-| `GOOGLE_CALLBACK_URL` | ✅ | Same as above |
-| `SLACK_CLIENT_ID` | ✅ | https://api.slack.com/apps → OAuth & Permissions |
-| `SLACK_CLIENT_SECRET` | ✅ | Scopes: `chat:write`, `channels:read` |
-| `JWT_SECRET` | ✅ | ≥ 32 chars — signs session cookies |
-| `ENCRYPTION_KEY` | ✅ | 32-byte base64 — encrypts stored Slack tokens |
-| `SMTP_USER` / `SMTP_PASS` | ⚠️ | **Your Ethereal address + password** |
-| `SMTP_HOST` / `SMTP_PORT` | – | Defaults `smtp.ethereal.email` / `587` |
-| `DASHBOARD_TOKEN` | – | Empty **disables** the BullMQ dashboard (fails closed) |
-| `DASHBOARD_READ_ONLY` | – | Defaults `true` — mutating HTTP methods are refused |
-| `WORKER_CONCURRENCY` | – | Defaults `5` |
-| `SMTP_TRANSPORT` | – | `ethereal` (default) or `stub` for test runs |
-| `API_RATE_LIMIT_MAX` | – | Defaults `100` requests / `60000` ms |
+| `SMTP_HOST` | `smtp.ethereal.email` | |
+| `SMTP_PORT` | `587` | |
+| `SMTP_TRANSPORT` | `ethereal` | Use `stub` only when running test suites |
+| `DASHBOARD_TOKEN` | empty | Empty disables the BullMQ dashboard entirely |
+| `DASHBOARD_READ_ONLY` | `true` | Blocks anything except GET/HEAD/OPTIONS |
+| `WORKER_CONCURRENCY` | `5` | Jobs processed at once per worker |
+| `API_RATE_LIMIT_MAX` | `100` | Requests allowed per window |
+| `API_RATE_LIMIT_WINDOW_MS` | `60000` | The window above, in milliseconds |
+| `FRONTEND_URL` | `http://localhost:3001` | |
+| `MAX_RECIPIENTS_PER_SCHEDULE` | `1000` | |
 
-### Where they go
+**Google OAuth setup checklist:**
+
+1. Create a project at https://console.cloud.google.com
+2. Enable the Google+ or People API
+3. Create **OAuth 2.0 Client ID** credentials
+4. Add `http://localhost:3000/api/v1/auth/google/callback` as an authorised
+   redirect URI
+5. Copy the client ID and secret into your `.env`
+
+**Slack setup checklist:**
+
+1. Create an app at https://api.slack.com/apps
+2. Under **OAuth & Permissions**, add the scopes `chat:write` and
+   `channels:read`
+3. Install the app to your workspace
+4. Copy the client ID and secret into your `.env`
+
+### Where the file goes
 
 ```powershell
-cp reachinbox-backend/.env.example reachinbox-backend/.env
-# then edit reachinbox-backend/.env with real values
+cd reachinbox-backend
+Copy-Item .env.example .env
+notepad .env
 ```
 
-`.env` is **gitignored** in every subproject — verified against the committed
-file list, which contains only `.env.example` templates. Rotate your secrets if
-they are ever pasted anywhere else.
+`.env` is ignored by git in every subproject. The files committed to GitHub
+contain only `.env.example` templates, never real values.
 
-> ⚠️ Rotating `ENCRYPTION_KEY` invalidates any Slack token already stored,
-> because they are encrypted with the previous key. Reconnect Slack after a
-> rotation.
+> **Important:** if you ever rotate `ENCRYPTION_KEY`, any Slack token you
+> already saved becomes unreadable. You will need to disconnect and reconnect
+> Slack in the dashboard.
 
 ---
 
 ## 4. Architecture overview
 
 ```
-                     ┌─────────────────────────────────────────┐
-  Browser ──────────▶│  Next.js :3001  (login, dashboard,      │
-                     │                 compose, tables)         │
-                     └────────────────┬────────────────────────┘
-                                      │ rewrites /api/v1/*  (API_URL)
-                                      ▼
-                     ┌─────────────────────────────────────────┐
-                     │  Express :3000                          │
-                     │  auth · schedules · emails · slack      │
-                     │  └─ scheduler.ts  (one transaction)     │
-                     └───────┬───────────────────────┬─────────┘
-                             │ writes                │ enqueues (after commit)
-                             ▼                       ▼
-                    ┌──────────────────┐    ┌──────────────────────────┐
-                    │   PostgreSQL     │    │  Redis / BullMQ          │
-                    │  source of truth │    │  delayed jobs, counters, │
-                    │  schedules       │    │  Lua rate-limit scripts  │
-                    │  recipients      │    └───────────┬──────────────┘
-                    │  deliveryAttempts│                │
-                    │  outboxEvents ───┼────────────────┤
-                    └──────────────────┘                ▼
-                                              ┌──────────────────────────┐
-                                              │  Worker  (--worker)      │
-                                              │  emailWorker   ──▶ SMTP  │
-                                              │  outboxWorker  ──▶ ES    │
-                                              │                ──▶ Slack │
-                                              └──────────────────────────┘
+   Browser
+      |
+      v
++---------------------------+
+|  Next.js  :3001           |
+|  login, dashboard,        |
+|  compose, tables          |
++-------------+-------------+
+              |  forwards /api/v1 to the API
+              v
++---------------------------+
+|  Express  :3000           |
+|  auth, schedules,         |
+|  emails, slack            |
++------+-------------+------+
+       |             |
+       | writes      | queues after commit
+       v             v
++-------------+   +---------------------------+
+| PostgreSQL  |   | Redis / BullMQ            |
+| source of   |   | delayed jobs,             |
+| truth       |   | rate limit counters,      |
+|             |   | atomic Lua scripts        |
+| outbox      |   +------------+--------------+
+| events  ----+----------------+
++-------------+                |
+                               v
+                    +---------------------------+
+                    |  Worker  (--worker)       |
+                    |  emailWorker  --> SMTP    |
+                    |  outboxWorker --> ES      |
+                    |                --> Slack  |
+                    +---------------------------+
 ```
 
-**Core principle: PostgreSQL is the source of truth; queues are a wake-up
-mechanism.** Anything a queue might lose is recoverable by re-reading the
-database.
+**The main idea: PostgreSQL is the source of truth, and queues are only a
+notification system.** Anything a queue loses can be rebuilt by reading the
+database again. That single rule is what makes restarts safe.
 
-### Process modes
+### The two process modes
 
-| Mode | Started by | Does |
+| Mode | Started by | What it does |
 |---|---|---|
-| **API** | `docker-compose up` / `npm run dev` | HTTP only. Runs `reconcilePendingWork()` on boot and every 60 s. |
-| **Worker** | `node dist/index.js --worker` | Consumes `email-scheduling` and `outbox-events`. Samples queue depth every 15 s, sweeps retention every 6 h. Serves no HTTP. |
+| API | `docker-compose up` or `npm run dev` | Serves HTTP. Runs reconciliation on startup and every 60 seconds. |
+| Worker | `node dist/index.js --worker` | Sends email and dispatches outbox events. Runs no HTTP at all. |
 
 ---
 
 ## 5. How scheduling works
 
+When you create a campaign, one database transaction does everything:
+
 ```
 POST /api/v1/schedules
-        │
-        ▼
-  ┌──────────────────── ONE TRANSACTION ────────────────────┐
-  │ 1. resolve idempotency key (ownerId, idempotencyKey)    │
-  │ 2. INSERT schedules                                     │
-  │ 3. INSERT recipients  status = 'queued'  ← status set   │
-  │ 4. INSERT outbox_events (one per recipient)             │
-  └─────────────────────────────────────────────────────────┘
-        │ commit
-        ▼
-  enqueue BullMQ delayed job   jobId = recipient-<uuid>-1
-        │
-        ▼  (after startAt + delayMs)
-  emailWorker:  CAS claim  ──▶  SMTP  ──▶  attempt row  ──▶  terminal status
+        |
+        v
+  ONE TRANSACTION
+  1. Resolve the idempotency key for this owner
+  2. Insert the schedule
+  3. Insert recipients, all set to status 'queued'
+  4. Insert one outbox event per recipient
+        |
+        v  (committed)
+  Enqueue a delayed BullMQ job
+  job id: recipient-<uuid>-1
+        |
+        v  (after the scheduled time)
+  Worker claims it --> sends via SMTP --> writes attempt --> marks terminal
 ```
 
-**Per-recipient jobs, not per-schedule.** Each recipient is its own BullMQ job
-keyed by `recipient-<uuid>-<attempt>`. A 1 000-recipient campaign is 1 000
-independently retried, independently rate-limited jobs.
+**Each recipient is its own job.** A 1000 person campaign becomes 1000 small
+jobs, each retried, cancelled, and rate limited on its own.
 
-Key decisions and why they matter:
+### Decisions that matter
 
 | Decision | Why |
 |---|---|
-| Recipients written as `queued`, not `scheduled` | The worker's claim CAS matches `status = 'queued'`. Writing `scheduled` would make the CAS never succeed. |
-| Job lookup by **recipient UUID** | The queue payload carries `recipientId`; the worker does `eq(recipients.id, recipientId)`. A `scheduleId:index` composite key matches nothing. |
-| Dashes in job IDs | BullMQ **rejects** single-colon custom job IDs, silently dropping them. `recipient-{uuid}-1` is safe; `outbox:x` is not. |
-| Scheduler replays on unique violation | Two concurrent requests with the same idempotency key: the loser catches the `(ownerId, idempotencyKey)` violation and returns the winner's record. |
-| Worker functions imported only under `--worker` | A static import would make every API replica a send worker, scaling concurrency with pod count. |
+| Recipients start at `queued`, not `scheduled` | The worker claims rows whose status is `queued`. Starting at `scheduled` would mean the claim never succeeds. |
+| Job lookup uses the recipient UUID | The queue passes `recipientId`, and the worker queries by primary key. A `scheduleId:index` compound key would match nothing. |
+| Job IDs use dashes, never a single colon | BullMQ rejects job IDs containing a single colon and silently drops them. `recipient-<uuid>-1` works. `outbox:x` does not. |
+| Duplicate requests replay the original | A unique index on `(owner_id, idempotency_key)` means the second request returns the first one's result instead of creating a duplicate. |
+| Worker code loads only with `--worker` | A normal import would turn every API replica into a sending process. |
 
 ### Idempotency
 
-The client sends an `Idempotency-Key` header (or `idempotencyKey` body field).
-It is scoped to the owner via a unique index on `(owner_id, idempotency_key)`,
-so the same key replayed returns the original schedule instead of creating a
-duplicate.
+The client sends an `Idempotency-Key` header (or an `idempotencyKey` field in
+the body). That key belongs to the logged in user, so two different users can
+use the same key without interfering.
 
-The compose screen holds this key in a `useRef`, regenerating it **only** when
-the modal opens or after a successful submit — so a network retry reuses the
-same key rather than minting a new one.
+The compose screen keeps the key in a React ref. It generates a new one only
+when the form opens or after a successful submit, so a retried network request
+reuses the same key instead of creating a second campaign.
 
 ---
 
 ## 6. How persistence on restart is handled
 
-Nothing is trusted to survive in Redis. On every boot the API re-reads the
-authoritative database:
+Nothing important lives only in Redis. When the API starts it reads the
+database:
 
 ```ts
-await reconcilePendingWork();          // on boot
-setInterval(reconcilePendingWork, 60_000);
+await reconcilePendingWork();                      // on startup
+setInterval(reconcilePendingWork, 60_000);         // and every minute
 ```
 
-`reconciliation.ts` handles three categories:
+`reconciliation.ts` looks at three groups of recipients:
 
-| Category | Source | Action |
+| Group | Where it finds them | What it does |
 |---|---|---|
-| Never-queued work | `status IN ('scheduled','queued')` | Re-publish idempotently |
-| Crashed mid-send | `status = 'sending'` + expired lease | Drop claim → back to `queued` → re-publish |
-| Already finished | `sent` / `failed` / `cancelled` | **Never requeued** |
+| Never queued | status `scheduled` or `queued` | Republishes the job |
+| Died mid send | status `sending` with an expired lease | Clears the claim, sets it back to `queued`, republishes |
+| Already finished | `sent`, `failed`, `cancelled` | Leaves it alone, never sends again |
 
-Terminal states are excluded from both scans, so a restart can never duplicate
-a send. Re-publishing is idempotent: an already-active BullMQ job with that ID
-is left alone rather than clobbered.
+Finished recipients are excluded from both checks, which is what stops a
+restart from sending a duplicate.
 
-### Claim / lease
+### Claim and lease
 
-The worker claims a recipient with a compare-and-swap:
+The worker takes ownership with an atomic conditional update:
 
 ```sql
-UPDATE recipients SET status='sending', claimed_by=$1, claim_expires_at=$2
-WHERE id=$3 AND (status='queued' OR (status='sending' AND claim_expires_at < now()))
+UPDATE recipients
+SET    status = 'sending', claimed_by = $1, claim_expires_at = $2
+WHERE  id = $3
+  AND  (status = 'queued'
+        OR (status = 'sending' AND claim_expires_at < now()))
 ```
 
-Two consequences:
+This gives two properties:
 
-- **Crash safety** — a worker that dies leaves an expired lease another worker
-  adopts. No send is stranded and none is lost.
-- **At-most-once at the boundary** — if the process dies *after* provider
-  acceptance but *before* the status update, recovery checks for an existing
-  attempt row with a provider ID and does **not** call SMTP again.
+- **A crash does not lose work.** If a worker dies, its lease expires and
+  another worker picks the row up.
+- **A crash does not resend.** If the process died after the provider accepted
+  the message but before we recorded it, recovery sees the stored provider ID
+  and does not call SMTP again.
 
 ### Transactional outbox
 
-Side effects that must not be lost (Elasticsearch indexing, Slack
-notifications) are written as `outbox_events` rows in the **same transaction**
-as the state change, then dispatched by a dedicated worker:
+Effects that must not be lost, such as Elasticsearch indexing and Slack
+notifications, are written to an `outbox_events` table in the same transaction
+as the change itself. A separate worker delivers them afterwards.
 
 ```
-write state + outbox_events  ──commit──▶  outboxWorker
-                                              │ claim  pending → processing
-                                              ├─▶ indexEmailRecord
-                                              ├─▶ sendSlackRateLimitEvent
-                                              └─▶ completed   (or retry, max 5)
+write state + outbox event  (one transaction)
+            |
+            v
+   outboxWorker
+     - claim event: pending -> processing
+     - indexEmailRecord
+     - sendSlackRateLimitEvent
+     - mark completed (or retry, up to 5 times)
 ```
 
-`indexEmailRecord` and `sendSlackRateLimitEvent` are imported **only** by the
-outbox worker — never by the send worker — so the pattern stays honest.
+Those two functions are imported only by the outbox worker, never by the send
+worker, so email delivery stays independent of both.
 
-Outage behaviour: Elasticsearch and Slack failures degrade to a pending outbox
-row and are retried. They never block or fail an email send.
+If Elasticsearch or Slack goes down, the event simply stays pending and is
+retried. Email sending is never blocked or failed because of it.
 
 ---
 
-## 7. How rate limiting & concurrency are implemented
+## 7. How rate limiting and concurrency work
 
-### Hourly cap — Redis Lua, atomic
+### Hourly limit
 
-A campaign's `hourlyLimit` is enforced by a Lua script that reserves a slot and
-checks the cap in a single atomic step — no read-modify-write race:
+Each schedule has an `hourlyLimit`. A Redis Lua script reserves a slot and
+checks the limit in one atomic step, so two workers cannot both grab the last
+slot.
 
-```lua
-key = rate_limit:{senderId}:hourly:{windowStart}
-```
-
-Windows are **aligned to the UTC hour boundary**:
+The time window is aligned to the whole UTC hour:
 
 ```ts
 Math.floor(now / 3600_000) * 3600_000
 ```
 
-A rolling window keyed on first-send would leak capacity across boundaries and
-make "reschedule to the next window" ambiguous. Every instance and every
-restart agrees on which window is current.
+Every worker, and every process restart, agrees on which hour is current. A
+window based on "first send" would drift and make "send in the next hour"
+unclear.
 
-**Capacity is released when a send fails** (`releaseHourlyCapacity`), so a
-recipient that errors out doesn't burn a slot that a working one could use.
+**If a send fails, its slot is returned** so a broken recipient does not use up
+capacity a working one could have had.
 
-### Minimum delay between sends
+### Minimum gap between sends
 
-`peekSenderDelay` reports when a sender next becomes eligible. Critically it is
-called **before** the hourly reservation: reserving hourly capacity for work
-that cannot send yet inflates the counter and pushes unrelated recipients into
-the next hour for no reason.
+`peekSenderDelay` checks when a sender is next allowed to send. It runs
+**before** the hourly reservation. Reserving an hourly slot for a message that
+cannot go out yet would waste the slot and push unrelated recipients into the
+next hour.
 
-Deferral is non-advancing — a failed delay-slot check does not itself move the
-delay forward, or each retry would push the next send further out (the bug where
-40 deferrals reached 39 s).
+When a send is deferred, the delay is not increased as a side effect. If it
+were, every retry would push the next attempt further out and the delays would
+grow without limit.
 
-### Concurrency
+### Concurrency controls
 
 | Control | Where |
 |---|---|
-| `WORKER_CONCURRENCY` (default 5) | BullMQ `Worker` concurrency |
-| Claim CAS with lease | Prevents two workers sending the same recipient |
-| Outbox claim (`pending → processing`) | Prevents duplicate side effects |
-| API rate limit (100 req/min) | `express-rate-limit`, independent of delivery quota |
+| `WORKER_CONCURRENCY`, default 5 | How many jobs one worker handles at once |
+| Atomic claim with a lease | Two workers can never send the same recipient |
+| Outbox event claim | An event is only delivered once |
+| API limit, 100 requests per minute | Protects the API and is separate from the email limit |
 
-BullMQ's `maxRetriesPerRequest: null` is required for workers but makes
-publish calls hang, so every publish is wrapped in `QUEUE_PUBLISH_TIMEOUT_MS`.
+One BullMQ setting worth knowing: `maxRetriesPerRequest: null` is required for
+workers, but it makes publish calls block forever. Every publish is therefore
+wrapped in a timeout (`QUEUE_PUBLISH_TIMEOUT_MS`).
 
 ---
 
-## 8. Backend feature map
+## 8. Backend features
 
-| Area | Implemented |
+| Area | What is implemented |
 |---|---|
-| **Scheduler** | `services/scheduler.ts` — transactional schedule + recipients + outbox, owner-scoped idempotency, unique-violation replay, delayed BullMQ job per recipient |
-| **Persistence** | 8-table Drizzle schema, claim/lease CAS, reconciliation on boot + 60 s, transactional outbox, retention sweep every 6 h |
-| **Rate limiting** | Redis Lua atomic hourly slots, UTC-aligned windows, `peekSenderDelay` ordering, non-advancing delay, capacity release on failure |
-| **Concurrency** | Dynamic worker import under `--worker`, per-worker `WORKER_CONCURRENCY`, CAS claim with lease expiry, deduplicated outbox dispatch |
-| **Delivery** | Transport abstraction (`ethereal` / `stub`), retry classification, provider IDs persisted, at-most-once at the accept boundary |
-| **Search** | Per-recipient Elasticsearch documents, updated on dispatch, `GET /api/v1/emails/search` |
-| **Slack** | OAuth with encrypted tokens, rate-limit notifications deduplicated by atomic `notifiedAt` claim |
-| **Security** | Server-side HTML sanitizer, helmet headers, timing-safe dashboard auth, 413 passthrough from body-parser, bounded pagination |
-| **Observability** | Structured logs with correlation IDs, Prometheus `/metrics`, queue-depth sampling |
+| **Scheduler** | `services/scheduler.ts`. Writes the schedule, recipients, and outbox events in one transaction. Owner scoped idempotency. Handles concurrent duplicate requests by replaying the winner. |
+| **Persistence** | 8 table schema in Drizzle. Claim and lease with an atomic conditional update. Reconciliation on startup and every 60 seconds. Transactional outbox. Retention sweep every 6 hours. |
+| **Rate limiting** | Atomic Lua slots in Redis. Windows aligned to the UTC hour. Delay checked before the hourly reservation. Slots returned when a send fails. |
+| **Concurrency** | Worker code loaded only under `--worker`. Configurable concurrency. Atomic claim with lease expiry. Outbox events delivered exactly once. |
+| **Delivery** | Transport abstraction with `ethereal` and `stub` modes. Retry classification. Provider IDs stored. Never sends twice at the acceptance boundary. |
+| **Search** | One Elasticsearch document per recipient, updated when the email is dispatched. Exposed at `GET /api/v1/emails/search`. |
+| **Slack** | OAuth with tokens encrypted at rest. Rate limit notifications deduplicated so each sender and window gets at most one. |
+| **Security** | Server side HTML sanitizer, security headers, timing safe token comparison, dashboard disabled when unconfigured, pagination capped at 100 rows. |
+| **Observability** | Structured logs with correlation IDs, Prometheus metrics at `/metrics`, queue depth sampled every 15 seconds. |
 
 ---
 
-## 9. Frontend feature map
+## 9. Frontend features
+
+### Screens
 
 | Screen | Route | What it does |
 |---|---|---|
-| **Login** | `/login` | `LoginCard` → `GET /api/v1/auth/google`. Session is an HttpOnly cookie; the token never reaches `localStorage`/`sessionStorage`. |
-| **Dashboard** | `/` | Scheduled list, search with debounce, status filters, pagination |
-| **Compose** | `/compose` | Recipient entry + **Web Worker CSV parsing**, sender settings, schedule picker, stable idempotency key |
-| **Scheduled** | `/scheduled` | Per-recipient email addresses (never schedule-ID slices), `+N` overflow marker, start times |
-| **Sent** | `/sent` | Recipient address, status, provider ref, delivery timestamp bound to `sentAt`/`createdAt` |
+| **Login** | `/login` | Sends you to Google sign in. The session is an HttpOnly cookie, so the token never touches browser storage. |
+| **Dashboard** | `/` | Scheduled campaigns with search, status filters, and pagination. |
+| **Compose** | `/compose` | Add recipients, upload a CSV (parsed in a Web Worker so the UI never freezes), set the schedule, pick the sender. |
+| **Scheduled** | `/scheduled` | Shows the real recipient email address for each campaign, plus a `+N` marker when there are more. |
+| **Sent** | `/sent` | Shows recipient address, status, provider reference, and the delivery time. |
 
-| Cross-cutting | Detail |
+### How it is wired
+
+| Concern | How it works |
 |---|---|
-| Data layer | React Query — `queryKey` includes `page`/`limit`/`search`, so pagination is a cache key, not local state |
-| Mutation safety | Idempotency key held in a ref, regenerated only on modal open or after success — survives network retries |
-| Sanitisation | `isomorphic-dompurify` on the client **and** a server-side allowlist sanitizer before storage |
-| Accessibility | WCAG 2.1 AA — ARIA labels, keyboard navigation, focus states, visible labels |
-| Styling | Tailwind, Figma-aligned components |
+| Data fetching | React Query. The query key includes page, limit, and search, so changing page is a cache key change rather than local state. |
+| Safe retries | The idempotency key lives in a ref. It changes only when the form opens or after a successful submit. |
+| HTML safety | DOMPurify on the client and a separate allowlist sanitizer on the server before anything is stored. |
+| Accessibility | WCAG 2.1 AA. ARIA labels, keyboard navigation, visible focus states. |
+| Styling | Tailwind CSS. |
 
-Pagination wires end to end:
+### Pagination end to end
 
 ```
-onPageChange → setPage → params {page, limit, search} → React Query key
-             → GET /api/v1/schedules?page=…&limit=…&search=…  (req.query)
-             → limit/offset in Postgres, bounded to 100 rows per page
+Click next
+  -> setPage
+  -> params { page, limit, search }
+  -> React Query refetches
+  -> GET /api/v1/schedules?page=2&limit=20
+  -> Express reads req.query
+  -> LIMIT / OFFSET in PostgreSQL
 ```
 
 ---
 
 ## 10. Testing
 
+### Unit tests
+
 ```powershell
-# Unit
-cd reachinbox-backend; npm test          # 38
-cd reachinbox-frontend; npm test         # 37
-
-# Integration (require the stack running)
-cd reachinbox-backend
-npm run test:security                    # 63 — injection, abuse, secrets, authz
-npm run test:failure-injection           # 24 — crash boundaries
-npm run test:outages                     # 11 — ES / Slack / Redis outages
-npm run load:test                        # 1000+ recipients
-npm run test:invariants                  # hourly cap, no duplicates, no drops
-npm run verify:recipient-binding         # 10 — real addresses in the list
-npm run probe:send-path                  # end-to-end through SMTP
-
-# End-to-end (browser)
-cd e2e; npx playwright test              # 29 (1 skipped until Slack reconnects)
+cd reachinbox-backend;  npm test     # 38 tests
+cd reachinbox-frontend; npm test     # 37 tests
 ```
 
-> Load, invariant, failure-injection and outage suites **require
-> `SMTP_TRANSPORT=stub`** — they inject deterministic provider failures that
-> real SMTP cannot produce. `test:failure-injection` now fails fast with
-> instructions if the transport is wrong, rather than reporting misleading
-> zero-call failures.
+### Integration tests
 
-Real delivery is verified separately with `probe:send-path` against live
-Ethereal credentials.
+These need the stack running.
+
+```powershell
+cd reachinbox-backend
+
+npm run test:security               # 63 assertions: injection, abuse, secrets, auth
+npm run test:failure-injection      # 24 assertions: crash boundaries
+npm run test:outages                # 11 assertions: ES, Slack, Redis outages
+npm run load:test                   # 1000+ recipients at once
+npm run test:invariants             # hourly cap, no duplicates, nothing dropped
+npm run verify:recipient-binding    # 10 assertions: real addresses in the list
+npm run probe:send-path             # full path through real SMTP
+```
+
+### Browser tests
+
+```powershell
+cd e2e
+npm install
+npx playwright test                 # 29 tests
+```
+
+> **Set `SMTP_TRANSPORT=stub` before running load, invariant, failure
+> injection, or outage tests.** They need to inject specific provider failures
+> that real SMTP cannot produce on demand. `test:failure-injection` now exits
+> immediately with instructions if the transport is wrong, instead of printing
+> confusing failures.
+
+Real email delivery is checked separately with `npm run probe:send-path`, which
+uses your actual Ethereal credentials.
 
 ---
 
 ## 11. Troubleshooting
 
-| Symptom | Fix |
+| Problem | Fix |
 |---|---|
-| Port 3001 busy | Kill stale `next dev` processes, then `npm run dev` again |
-| `EINVAL readlink` on `.next` | OneDrive sync conflict — `Remove-Item -Recurse -Force .next` |
-| Slack status shows disconnected after rotating keys | Reconnect in the dashboard; the stored token can't be decrypted with the new `ENCRYPTION_KEY` |
-| E2E Slack test skips | Same as above — it reports why rather than hiding |
-| Docker build fails on a `.test.ts` file | BuildKit + OneDrive read conflict — `docker-compose build api` again |
-| Tests report `transportCalls=0` | Worker isn't on `stub` — `$env:SMTP_TRANSPORT="stub"; docker-compose up -d --build` |
+| Port 3001 is busy | Close other `next dev` processes, then run `npm run dev` again |
+| `EINVAL readlink` in `.next` | OneDrive is syncing the folder. Run `Remove-Item -Recurse -Force .next` |
+| Slack shows as disconnected after changing keys | Reconnect it in the dashboard. The old token cannot be decrypted with the new `ENCRYPTION_KEY`. |
+| The Slack E2E test skips | Same cause as above. It prints its reason rather than hiding it. |
+| Docker build fails on a `.test.ts` file | A transient file lock. Run `docker-compose build api` again. |
+| Tests report `transportCalls=0` | The worker is not using the stub transport. Run `$env:SMTP_TRANSPORT="stub"; docker-compose up -d --build` |
+| App exits saying a variable is missing | The message names it. Add it to `reachinbox-backend/.env` and restart. |
+| Login fails immediately | Check `GOOGLE_CALLBACK_URL` matches the redirect URI registered in Google Cloud exactly. |
+
+---
+
+## 12. License
+
+Released under the [MIT License](LICENSE).
