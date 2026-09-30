@@ -122,7 +122,11 @@ export class BrevoTransport implements SmtpTransport {
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        "api-key": env.BREVO_API_KEY,
+        // Trimmed because a credential pasted into a dashboard env field
+        // routinely arrives with a trailing newline, and a header value that
+        // differs from the key by one character is refused as "Key not found" —
+        // a rejection that names neither the cause nor which character.
+        "api-key": env.BREVO_API_KEY.trim(),
       },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });

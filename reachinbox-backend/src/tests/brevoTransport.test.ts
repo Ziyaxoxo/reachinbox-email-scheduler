@@ -109,6 +109,17 @@ describe("Brevo transport", () => {
     expect(lastHeaders()["api-key"]).toBe("xkeysib-test-key");
   });
 
+  it("trims the key, since a pasted credential keeps its trailing newline", async () => {
+    // A header differing from the key by one character is refused as
+    // "Key not found", which names neither the cause nor the character.
+    env.BREVO_API_KEY = "xkeysib-test-key\n";
+    const transport = await freshTransport();
+
+    await transport.send(message);
+
+    expect(lastHeaders()["api-key"]).toBe("xkeysib-test-key");
+  });
+
   it("sends as the configured sender, not the signed-in user's address", async () => {
     const transport = await freshTransport();
 
