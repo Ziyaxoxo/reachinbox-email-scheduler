@@ -20,6 +20,19 @@ export function useSchedules(params: SchedulesParams = {}) {
     queryKey: ["schedules", params],
     queryFn: () => api.schedules.list(params),
     staleTime: 30 * 1000,
+    // A scheduled email changes status on the server with nothing to notify the
+    // browser, so without polling a row sits on "queued" until the user
+    // manually reloads. That reads as a broken product even when the send
+    // worked, which is the worst possible failure for something being
+    // demonstrated on camera.
+    //
+    // It also keeps the deployment alive. The API runs in hybrid mode, so this
+    // poll is what stops the free instance from spinning down and taking the
+    // queue consumer with it. A 5s interval is well inside Render's idle window.
+    refetchInterval: 5_000,
+    // Don't stack requests if one is already in flight, or a slow response
+    // would let intervals pile up behind it.
+    refetchIntervalInBackground: false,
   });
 
   const createMutation = useMutation({

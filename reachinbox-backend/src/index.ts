@@ -16,31 +16,53 @@ const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /**
  * Decide which role this process plays.
  *
- * Either signal selects worker mode, and they cannot disagree: an operator
- * setting `WORKER_MODE` on an API service by mistake is a mistake worth
- * honouring loudly rather than quietly ignoring, because the symptom of
- * getting it wrong in the other direction (a worker that silently serves HTTP
- * instead of consuming) is invisible from outside.
+ * Three outcomes, not two, because the roles are not mutually exclusive in the
+ * way the original binary assumed:
+ *
+ *   - `worker`     consumes, serves no HTTP. A dedicated worker service.
+ *   - `api`        serves HTTP, consumes nothing. Safe at any replica count.
+ *   - `hybrid`     serves HTTP *and* consumes. One process doing both.
+ *
+ * Worker mode wins over hybrid when both are requested, and that ordering is not
+ * cosmetic: a process that serves no HTTP cannot be an API replica, so it cannot
+ * be one of several competing senders.
+ *
+ * Hybrid exists because Render has no free background worker, so a free
+ * deployment has exactly one long-lived process and it has to do both jobs. The
+ * usual objection is that an API replica must never become a sender, because
+ * send concurrency would then scale with replica count. That objection holds
+ * generally and is why hybrid is opt-in: with several replicas, `api` is the
+ * correct answer and hybrid would multiply send throughput without anyone
+ * intending it. With the single instance a free tier allows, there is nothing to
+ * scale.
+ *
+ * An operator setting `WORKER_MODE` on an API service by mistake is honoured
+ * loudly rather than quietly ignored, because the symptom of getting it wrong
+ * the other way, a worker that silently serves HTTP instead of consuming, is
+ * invisible from outside.
  */
-function resolveMode(): { isWorker: boolean; via: string } {
+function resolveMode(): { isWorker: boolean; servesHttp: boolean; via: string } {
   if (process.argv.includes("--worker")) {
-    return { isWorker: true, via: "argv" };
+    return { isWorker: true, servesHttp: false, via: "argv" };
   }
   if (env.WORKER_MODE !== "") {
-    return { isWorker: true, via: "env" };
+    return { isWorker: true, servesHttp: false, via: "env" };
   }
-  return { isWorker: false, via: "default" };
+  if (env.EMBEDDED_WORKER !== "") {
+    return { isWorker: true, servesHttp: true, via: "embedded" };
+  }
+  return { isWorker: false, servesHttp: true, via: "default" };
 }
 
 async function main() {
-  const { isWorker, via } = resolveMode();
+  const { isWorker, servesHttp, via } = resolveMode();
 
   // Published before anything can serve a request or fail, so a mode check
   // never reports the pre-resolution default.
-  publishMode({ isWorker, via });
+  publishMode({ isWorker, servesHttp, via });
 
   logger.info(
-    { env: env.NODE_ENV, isWorker, modeVia: via },
+    { env: env.NODE_ENV, isWorker, servesHttp, modeVia: via },
     "Starting ReachInbox backend",
   );
 
@@ -56,9 +78,9 @@ async function main() {
   setupGracefulShutdown();
 
   if (isWorker) {
-    // Imported here, not at module scope: an API replica must never become a
-    // send worker, otherwise effective concurrency silently scales with the
-    // number of API pods.
+    // Imported here, not at module scope: an API replica must not become a send
+    // worker unless hybrid mode was explicitly requested, or effective
+    // concurrency would scale silently with the number of API pods.
     const [{ emailWorker }, { outboxWorker }] = await Promise.all([
       import("./workers/emailWorker.js"),
       import("./workers/outboxWorker.js"),
@@ -69,8 +91,10 @@ async function main() {
       "Worker mode: consuming email-scheduling and outbox-events",
     );
 
-    // Workers do not serve HTTP, so queue depth is sampled on an interval to
-    // keep BE-OBS-002 satisfied without a metrics endpoint.
+    // A process that serves no HTTP has no /metrics to report queue depth on,
+    // so it samples on an interval to keep BE-OBS-002 satisfied. A hybrid
+    // process does expose metrics, but sampling either way keeps the two
+    // deployments observably identical.
     setInterval(() => {
       void refreshQueueDepthMetrics();
     }, QUEUE_METRICS_INTERVAL_MS);
@@ -86,12 +110,17 @@ async function main() {
     void runRetention();
 
     logger.info("Worker ready");
+  }
+
+  if (!servesHttp) {
     return;
   }
 
-  // API mode: serve HTTP only.
-
-  logger.info("API mode: serving HTTP");
+  if (isWorker) {
+    logger.info("Hybrid mode: serving HTTP and consuming in one process");
+  } else {
+    logger.info("API mode: serving HTTP");
+  }
 
   // Recover queue state from the authoritative database on boot.
   await reconcilePendingWork();

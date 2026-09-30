@@ -34,12 +34,17 @@ healthRouter.get("/live", (_req, res) => {
  * exactly the situation that is otherwise invisible.
  */
 healthRouter.get("/mode", (_req, res) => {
-  const { isWorker, via } = getMode();
+  const { isWorker, servesHttp, via } = getMode();
   res.json({
-    mode: isWorker ? "worker" : "api",
+    // Naming all three, because the pair is what matters and any single
+    // boolean misleads on hybrid: this route responding at all already proves
+    // the process serves HTTP.
+    mode: isWorker ? (servesHttp ? "hybrid" : "worker") : "api",
     isWorker,
+    servesHttp,
     modeVia: via,
     workerModeRequested: env.WORKER_MODE !== "",
+    embeddedWorkerRequested: env.EMBEDDED_WORKER !== "",
     pid: process.pid,
     timestamp: new Date().toISOString(),
   });

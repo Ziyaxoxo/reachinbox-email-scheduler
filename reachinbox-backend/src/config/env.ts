@@ -53,6 +53,26 @@ const envSchema = z.object({
   // WORKER_MODE=0 would be wrong: use an unset or empty value for API mode.
   WORKER_MODE: z.string().default(""),
 
+  // Serve HTTP and consume queues from the same process.
+  //
+  // This exists for deployments that have exactly one long-lived process and no
+  // way to run a second one. The motivating case is Render's free tier, which
+  // offers no free background worker: the cheapest worker instance is $7/month,
+  // so on a no-card budget the API service is the only process there is, and
+  // without this it serves HTTP and consumes nothing. Every scheduled email then
+  // sits in the queue indefinitely while the dashboard looks healthy.
+  //
+  // Off by default, and that default is the point. An API replica must not
+  // become a sender implicitly, because send concurrency would then scale with
+  // replica count: two API pods would send twice as fast as one, which is not a
+  // decision anyone made. Opting in per-deployment keeps that impossible by
+  // default, and the single-instance case explicit.
+  //
+  // Same non-empty-value rule as WORKER_MODE, so EMBEDDED_WORKER=0 is wrong.
+  // WORKER_MODE wins over this if both are set: a process serving no HTTP cannot
+  // also be an API replica.
+  EMBEDDED_WORKER: z.string().default(""),
+
   // BullMQ dashboard (operator-only, never public).
   // Empty means "disabled": the dashboard refuses all access rather than
   // defaulting open, so a missing secret fails closed.

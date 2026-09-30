@@ -17,6 +17,11 @@ export function useEmails(params: EmailsParams = {}) {
     queryKey: ["emails", "sent", params],
     queryFn: () => api.emails.sent(params),
     staleTime: 30 * 1000,
+    // Same reasoning as useSchedules: a sent row appears server-side with
+    // nothing to notify the browser, and the poll is also what holds the free
+    // instance awake so the consumer keeps draining.
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
   });
 
   return {

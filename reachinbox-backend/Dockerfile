@@ -53,6 +53,28 @@ EXPOSE 3000
 # Both are documented in the README. The alternative, an HTTP probe for worker
 # mode, cannot work: the only evidence of a healthy worker is that it is not
 # listening.
+#
+# A dedicated worker registers no HTTP listener, so there is nothing for a
+# container probe to talk to. An earlier version of this checked
+# `/health/worker` for worker-mode containers; that marked every healthy worker
+# unhealthy, because curl got connection-refused and exited 1. It also could not
+# have caught the failure it was written for: an API replica mislabelled as a
+# worker still answers on 3000, and `curl -f` treats that route's deliberate 404
+# as a failure too.
+#
+# So the probe is keyed on whether the process serves HTTP, not on which role it
+# took. `EMBEDDED_WORKER` serves HTTP and consumes, so it must be probed over
+# HTTP like any API replica -- gating it into the no-HTTP branch would mark a
+# healthy hybrid process unhealthy, which is the same mistake in a new place.
+#
+# What the probe cannot do is confirm which role was resolved. Confirm the mode
+# after deploy instead of guessing here:
+#
+#   curl -s https://<api>/health/mode      # "mode":"hybrid" on a free deployment
+#   docker logs <worker> | grep modeVia    # "modeVia":"env" on a dedicated worker
+#
+# The alternative, probing worker mode over HTTP, cannot work: the only evidence
+# of a healthy dedicated worker is that it is not listening.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD if [ -n "$WORKER_MODE" ]; then \
         node -e "process.exit(0)"; \
