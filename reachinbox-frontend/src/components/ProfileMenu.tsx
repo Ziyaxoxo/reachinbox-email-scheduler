@@ -14,7 +14,10 @@ import { AccountMenuItems } from "./AccountMenu";
  * try.
  */
 export function ProfileMenu() {
-  const { user, logout, isLoggingOut } = useAuth();
+  // Sign out is rendered by AccountMenuItems, which both this menu and the
+  // sidebar share. Reading logout here as well would be a second, unused copy
+  // of the same state.
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 

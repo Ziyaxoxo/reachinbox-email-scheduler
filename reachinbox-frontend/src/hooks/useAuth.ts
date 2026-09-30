@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 export function useAuth() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, setUser, setLoading, setError, logout, isLoading, isAuthenticated } = useAuthStore();
+  const { user, setUser, setLoading, logout, isLoading, isAuthenticated } = useAuthStore();
   const addToast = useToastStore((s) => s.addToast);
 
   const { isLoading: isFetching } = useQuery({

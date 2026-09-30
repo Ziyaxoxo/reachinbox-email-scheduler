@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { CalendarClock } from "lucide-react";
 import { format } from "date-fns";
-import { clsx } from "clsx";
 
 interface SchedulePickerProps {
   value: Date;

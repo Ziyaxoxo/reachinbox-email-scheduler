@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { PenLine, Calendar, Send, Inbox, ChevronDown } from "lucide-react";
+import { PenLine, Calendar, Send, ChevronDown } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../hooks/useAuth";
 import { AccountMenuItems } from "./AccountMenu";

@@ -1,0 +1,59 @@
+{
+  "root": true,
+  "extends": [
+    // TS rules first so they are registered, then Next's, so its framework
+    // rules (core-web-vitals) take precedence where the two overlap.
+    "plugin:@typescript-eslint/recommended",
+    "next/core-web-vitals"
+  ],
+  "plugins": ["@typescript-eslint"],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "ignorePatterns": [
+    ".next/",
+    "node_modules/",
+    "out/",
+    "next-env.d.ts",
+    "*.tsbuildinfo"
+  ],
+  "rules": {
+    // TypeScript reports both of these with type information; the ESLint
+    // versions cannot see types and would either duplicate the error or miss it.
+    "no-undef": "off",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+
+    // `any` is banned in favour of `unknown` plus a narrowing check. The API
+    // client parses untyped JSON, so the boundary is where it is allowed.
+    "@typescript-eslint/no-explicit-any": "error",
+
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-console": ["error", { "allow": ["error", "warn"] }]
+  },
+  "overrides": [
+    {
+      // next.config, tailwind.config and any other JS at the repo root are not
+      // part of the TypeScript program, so type-aware rules cannot be applied
+      // to them. They still get the syntax-level ones.
+      "files": ["*.js", "*.mjs", "*.cjs"],
+      "rules": {
+        "@typescript-eslint/no-require-imports": "off"
+      }
+    },
+    {
+      // Tests assert on deliberately malformed input, so `any` is the point.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "src/tests/**/*"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "no-console": "off"
+      }
+    }
+  ]
+}

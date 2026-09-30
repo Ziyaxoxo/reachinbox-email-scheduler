@@ -224,6 +224,10 @@ export function ComposeModal({ isOpen, onClose }: ComposeModalProps) {
     startTime,
     delayMs,
     hourlyLimit,
+    // Closes the modal on success. Without it this callback would keep calling
+    // whatever onClose was on the render that built it, which is a stale
+    // closure the moment the parent stops passing a fresh function.
+    onClose,
   ]);
 
   function reset() {

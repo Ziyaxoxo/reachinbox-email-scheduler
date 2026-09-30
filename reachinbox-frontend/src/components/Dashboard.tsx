@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Search, SlidersHorizontal, RefreshCw, PenLine, X, Check } from "lucide-react";
@@ -80,8 +80,11 @@ export function Dashboard() {
    */
   const isComposeOpen = pathname === "/compose";
 
-  const openCompose = () => router.push("/compose");
-  const closeCompose = () => router.push("/");
+  // Both are stable identities so that consumers can list them as dependencies.
+  // A new function every render would silently defeat ComposeModal's
+  // useCallback memoisation, since router itself never changes.
+  const openCompose = useCallback(() => router.push("/compose"), [router]);
+  const closeCompose = useCallback(() => router.push("/"), [router]);
 
   const visibleQuery = useMemo(() => query.trim().toLowerCase(), [query]);
 
