@@ -15,6 +15,10 @@ services:
       - SMTP_PORT=587
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_TRANSPORT=${SMTP_TRANSPORT:-ethereal}
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
+      - BREVO_API_URL=${BREVO_API_URL:-https://api.brevo.com}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
@@ -62,8 +66,12 @@ services:
       - SMTP_PORT=587
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
-      # Set SMTP_TRANSPORT=stub to run load / invariant tests without delivering.
+      - SMTP_FROM=${SMTP_FROM:-}
+      # Set SMTP_TRANSPORT=stub to run load / invariant tests without delivering,
+      # or brevo to send over HTTPS on hosts that block the outbound SMTP ports.
       - SMTP_TRANSPORT=${SMTP_TRANSPORT:-ethereal}
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
+      - BREVO_API_URL=${BREVO_API_URL:-https://api.brevo.com}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback

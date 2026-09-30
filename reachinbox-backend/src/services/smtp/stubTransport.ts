@@ -159,11 +159,11 @@ export class StubTransport implements SmtpTransport {
   describe(): SmtpDescription {
     return {
       transport: "stub",
-      host: null,
+      endpoint: null,
       port: null,
       secure: false,
-      userConfigured: false,
-      passConfigured: false,
+      authScheme: "none",
+      credentialsConfigured: false,
       fromSource: "requested",
       verified: true,
       verifyError: null,

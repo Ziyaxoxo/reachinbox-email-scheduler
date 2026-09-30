@@ -80,17 +80,25 @@ healthRouter.get("/worker", (_req, res) => {
  *
  * Exists because a misconfigured transport produces the worst kind of failure:
  * a healthy service that reports no error anywhere, a dashboard full of normal
- * rows, and `failed` recipients whose only explanation is one log line. The two
- * causes have opposite fixes and differ by a single digit in the SMTP reply —
+ * rows, and `failed` recipients whose only explanation is one log line. These
+ * causes have different fixes in different places, so they are reported
+ * separately rather than collapsed into one boolean:
  *
- *   - `userConfigured: false` means the env vars never arrived; the fix is on
- *     the platform, not the credentials.
- *   - `userConfigured: true` with `verified: false` means they arrived and the
- *     provider refused them; the credentials themselves are wrong.
+ *   - `credentialsConfigured: false` means the env vars never arrived; the fix
+ *     is on the platform, not the credentials.
+ *   - `verified: false` means they arrived and the provider refused them, or
+ *     could not be reached at all. `verifyError` carries which.
+ *   - `fromSource: "requested"` means the envelope sender is the signed-in
+ *     user's own address, which no provider will send from on a shared account.
+ *     This is checked before `verify()`, so it is reported even when the
+ *     credential check passes.
  *
  * Credential values are never included, so this is safe to serve without auth.
  * `verified` is null until the startup probe has completed, which is reported
  * as unknown rather than guessed either way.
+ *
+ * The route is still named `/smtp` even though one supported transport is HTTP:
+ * renaming it would break the deployed check that was just built to catch this.
  */
 healthRouter.get("/smtp", async (_req, res) => {
   const { getSmtpTransport } = await import("../../services/smtp/transportFactory.js");

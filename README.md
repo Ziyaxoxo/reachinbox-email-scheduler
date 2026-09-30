@@ -242,8 +242,10 @@ missing, the app prints exactly which and exits.
 |---|---|---|
 | `SMTP_HOST` | `smtp.ethereal.email` | |
 | `SMTP_PORT` | `587` | |
-| `SMTP_TRANSPORT` | `ethereal` | Use `stub` only when running test suites |
+| `SMTP_TRANSPORT` | `ethereal` | `ethereal`, `brevo`, or `stub`. See the note below. |
 | `SMTP_FROM` | empty | Envelope sender. Empty means "send as the account `SMTP_USER` belongs to". See below. |
+| `BREVO_API_KEY` | empty | Brevo API key, used when `SMTP_TRANSPORT=brevo` |
+| `BREVO_API_URL` | `https://api.brevo.com` | |
 | `DASHBOARD_TOKEN` | empty | Empty disables the BullMQ dashboard entirely |
 | `DASHBOARD_READ_ONLY` | `true` | Blocks anything except GET/HEAD/OPTIONS |
 | `WORKER_CONCURRENCY` | `5` | Jobs processed at once per worker |
@@ -252,20 +254,50 @@ missing, the app prints exactly which and exits.
 | `FRONTEND_URL` | `http://localhost:3001` | |
 | `MAX_RECIPIENTS_PER_SCHEDULE` | `1000` | |
 
+**Choosing a transport.** `SMTP_TRANSPORT` picks how mail leaves the process,
+and the choice is forced by the host rather than by preference:
+
+| Value | Reaches the provider over | Use when |
+|---|---|---|
+| `ethereal` | SMTP (`SMTP_HOST:SMTP_PORT`) | You control the host, or you are testing locally |
+| `brevo` | HTTPS (`BREVO_API_URL`) | The host blocks outbound SMTP ports |
+| `stub` | nothing | Load and failure-injection runs, where delivery must not happen |
+
+`brevo` exists because **free Render web services block all outbound traffic to
+SMTP ports 25, 465 and 587.** Ethereal's relay, and Brevo's own relay, are both
+unreachable from such a host no matter which credentials they are given — the
+connection simply times out. Port 443 is not blocked, and the HTTP API is the
+same product behind the same account, so `brevo` is a transport swap rather than
+a downgrade. On a paid instance, or anywhere else that permits SMTP, `ethereal`
+works unchanged.
+
+With `brevo`, set `SMTP_FROM` to a sender address the provider has verified;
+Brevo rejects anything else, naming the sender field in the error.
+
 **Who the mail is sent as:** users schedule campaigns under their own address,
-but an SMTP provider will only send from the mailbox its credentials
-authenticate as. On a shared relay account like Ethereal those are different
-addresses, so the envelope sender is pinned to `SMTP_USER` and the user's
-address stays the identity in the UI. Set `SMTP_FROM` only when `SMTP_USER` is
-a real mailbox the provider owns.
+but a provider will only send from a mailbox it is entitled to send from. On a
+shared account those are different addresses, so the envelope sender is resolved
+once, in this order: `SMTP_FROM`, then `SMTP_USER`, then the address the caller
+asked for. The user's own address remains the identity shown in the UI.
 
 **Diagnosing a send failure:** `GET /health/smtp` reports the transport
-configuration with credentials reduced to present/absent, plus whether the
-provider has accepted them. `verified: false` with `userConfigured: true` means
-the credentials arrived and were refused; `userConfigured: false` means the env
-vars never reached the container. The `verifyError` string carries the SMTP
-response code, which is the part that matters: `530` means no credentials were
-offered, `535` means they were refused.
+configuration with credentials reduced to present/absent, and whether the
+provider has accepted them. The three signals are separate because they are
+fixed in different places:
+
+- `credentialsConfigured: false` — the env vars never reached the process.
+- `fromSource: "requested"` — the envelope sender is the signed-in user's own
+  address, which no provider will send from on a shared account.
+- `verified: false` — the credential arrived and the provider refused it, or
+  could not be reached. `verifyError` says which; for SMTP it carries the
+  response code (`530` means no credentials were offered, `535` that they were
+  refused), and for the HTTP transport it carries the status and the provider's
+  own message.
+
+`verified` is `null` until the startup probe has run, and the worker also logs
+one line saying whether the provider accepted the credentials. Without that,
+the only evidence of a bad configuration was a wall of `failed` rows minutes
+later, all carrying the same opaque code.
 
 **Google OAuth setup checklist:**
 

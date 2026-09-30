@@ -137,15 +137,23 @@ describe("redacted description", () => {
 
     expect(described).not.toContain("super-secret");
     expect(described).not.toContain("demo@ethereal.email");
-    expect(transport.describe().userConfigured).toBe(true);
-    expect(transport.describe().passConfigured).toBe(true);
+    expect(transport.describe().credentialsConfigured).toBe(true);
+    expect(transport.describe().authScheme).toBe("smtp");
+  });
+
+  it("counts a half-configured credential pair as unconfigured", async () => {
+    // The SMTP handshake fails on a missing half, so reporting `true` here would
+    // send an operator looking for a rejected credential that was never sent.
+    env.SMTP_USER = "demo@ethereal.email";
+    const transport = await freshTransport();
+
+    expect(transport.describe().credentialsConfigured).toBe(false);
   });
 
   it("reports missing credentials as not configured", async () => {
     const transport = await freshTransport();
 
-    expect(transport.describe().userConfigured).toBe(false);
-    expect(transport.describe().passConfigured).toBe(false);
+    expect(transport.describe().credentialsConfigured).toBe(false);
     expect(transport.describe().fromSource).toBe("requested");
   });
 

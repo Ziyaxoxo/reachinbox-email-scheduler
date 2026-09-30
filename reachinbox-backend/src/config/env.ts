@@ -24,8 +24,15 @@ const envSchema = z.object({
   // provider does not own is how senders get rejected.
   SMTP_FROM: z.string().default(""),
 
-  // "ethereal" in every real environment; "stub" only for load/failure runs.
-  SMTP_TRANSPORT: z.enum(["ethereal", "stub"]).default("ethereal"),
+  // "ethereal" locally and on any host that permits outbound SMTP; "brevo" on
+  // hosts that block the SMTP ports (free Render web services block 25/465/587);
+  // "stub" only for load/failure runs, where nothing is actually delivered.
+  SMTP_TRANSPORT: z.enum(["ethereal", "brevo", "stub"]).default("ethereal"),
+
+  // Brevo's HTTP API. Reached over 443, so it works where SMTP cannot, and it
+  // authenticates with a single key rather than a user/password pair.
+  BREVO_API_KEY: z.string().default(""),
+  BREVO_API_URL: z.string().url().default("https://api.brevo.com"),
 
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),

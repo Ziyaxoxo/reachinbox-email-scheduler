@@ -9,6 +9,7 @@ import type {
   SmtpErrorClassification,
   SmtpDescription,
 } from "./transport.js";
+import { resolveEnvelopeFrom } from "./transport.js";
 import { logger } from "../../observability/logger.js";
 
 export class EtherealTransport implements SmtpTransport {
@@ -32,37 +33,16 @@ export class EtherealTransport implements SmtpTransport {
     });
   }
 
-  /**
-   * The address the message is actually sent from.
-   *
-   * The worker asks to send as the per-user sender address, which is the user's
-   * own login email. A provider will only send from the mailbox its credentials
-   * authenticate as, so on a shared relay account that address is rejected
-   * however correct the credentials are. Pinning the envelope to the
-   * authenticated account is what makes the send actually happen.
-   *
-   * Falls back to the requested address when no account is configured, so a
-   * missing-credential deployment behaves exactly as it did before rather than
-   * silently sending as `undefined`.
-   */
-  private effectiveFrom(requested: string): string {
-    const configured = env.SMTP_FROM.trim();
-    if (configured !== "") return configured;
-    const account = env.SMTP_USER.trim();
-    if (account !== "") return account;
-    return requested;
-  }
-
   async send(message: SmtpMessage): Promise<SmtpResult> {
-    const from = this.effectiveFrom(message.from);
+    const { from, source } = resolveEnvelopeFrom(message.from);
 
     if (from !== message.from && !this.loggedFromOverride) {
       // Once per process, not per send: this is a configuration fact, and
       // logging it on every message would bury the actual send failures.
       this.loggedFromOverride = true;
       logger.info(
-        { requested: message.from, effectiveFrom: from },
-        "Sending from the authenticated SMTP account rather than the per-user sender address",
+        { requested: message.from, effectiveFrom: from, fromSource: source },
+        "Sending from the configured envelope sender rather than the per-user sender address",
       );
     }
 
@@ -116,17 +96,12 @@ export class EtherealTransport implements SmtpTransport {
   describe(): SmtpDescription {
     return {
       transport: "ethereal",
-      host: env.SMTP_HOST,
+      endpoint: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_PORT === 465,
-      userConfigured: env.SMTP_USER.trim() !== "",
-      passConfigured: env.SMTP_PASS.trim() !== "",
-      fromSource:
-        env.SMTP_FROM.trim() !== ""
-          ? "configured"
-          : env.SMTP_USER.trim() !== ""
-            ? "authenticated-account"
-            : "requested",
+      authScheme: "smtp",
+      credentialsConfigured: env.SMTP_USER.trim() !== "" && env.SMTP_PASS.trim() !== "",
+      fromSource: resolveEnvelopeFrom("").source,
       verified: this.verified,
       verifyError: this.verifyError,
     };

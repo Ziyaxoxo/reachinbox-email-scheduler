@@ -69,28 +69,39 @@ async function reportSmtpReadiness(): Promise<void> {
   const description = transport.describe();
 
   if (description.transport === "stub") {
-    logger.warn("SMTP transport is the stub: nothing is actually delivered");
+    logger.warn("Mail transport is the stub: nothing is actually delivered");
     return;
   }
 
-  if (!description.userConfigured || !description.passConfigured) {
+  if (!description.credentialsConfigured) {
     logger.error(
       { ...description },
-      "SMTP credentials are missing: every send will fail with 530",
+      "Mail transport has no credentials: every send will fail",
     );
     return;
+  }
+
+  // Reported independently of the credential check because the two fail
+  // differently. A missing credential fails before the provider is contacted at
+  // all, whereas an unconfigured envelope sender is only discovered per-send,
+  // as a rejection of the sender address, and reads like a provider problem.
+  if (description.fromSource === "requested") {
+    logger.error(
+      { ...description },
+      "Envelope sender is not configured: set SMTP_FROM to a sender the provider has verified, or every send will be rejected",
+    );
   }
 
   const ok = await transport.verify();
   if (ok) {
     logger.info(
       { ...transport.describe() },
-      "SMTP transport verified: the provider accepted the credentials",
+      "Mail transport verified: the provider accepted the credentials",
     );
   } else {
     logger.error(
       { ...transport.describe() },
-      "SMTP transport rejected the credentials; sends will fail until fixed",
+      "Mail transport could not be verified; sends will fail until fixed",
     );
   }
 }
@@ -153,7 +164,7 @@ async function main() {
     // Prove the transport can authenticate at boot, before any recipient is
     // charged a failed attempt. Without this the only evidence of a broken
     // credential is a wall of `failed` rows minutes later, all carrying the same
-    // opaque EENVELOPE code, with the real reply buried in the deploy log.
+    // opaque code, with the real reply buried in the deploy log.
     //
     // Not awaited: a provider that is briefly unreachable must not stop the
     // worker from consuming, because the queue is the source of truth and this

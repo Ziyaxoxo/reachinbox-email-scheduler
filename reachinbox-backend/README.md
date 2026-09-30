@@ -51,6 +51,8 @@ npm run dev
 | `SMTP_USER` | Ethereal SMTP username. Also the envelope sender unless `SMTP_FROM` is set |
 | `SMTP_PASS` | Ethereal SMTP password |
 | `SMTP_FROM` | Optional explicit envelope sender |
+| `SMTP_TRANSPORT` | `ethereal`, `brevo` (HTTPS, for hosts that block SMTP ports) or `stub` |
+| `BREVO_API_KEY` | Brevo API key, used when `SMTP_TRANSPORT=brevo` |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `SLACK_CLIENT_ID` | Slack OAuth client ID |
