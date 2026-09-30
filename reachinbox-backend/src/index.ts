@@ -12,10 +12,32 @@ const RECONCILE_INTERVAL_MS = 60_000;
 const QUEUE_METRICS_INTERVAL_MS = 15_000;
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-async function main() {
-  const isWorker = process.argv.includes("--worker");
+/**
+ * Decide which role this process plays.
+ *
+ * Either signal selects worker mode, and they cannot disagree: an operator
+ * setting `WORKER_MODE` on an API service by mistake is a mistake worth
+ * honouring loudly rather than quietly ignoring, because the symptom of
+ * getting it wrong in the other direction (a worker that silently serves HTTP
+ * instead of consuming) is invisible from outside.
+ */
+function resolveMode(): { isWorker: boolean; via: string } {
+  if (process.argv.includes("--worker")) {
+    return { isWorker: true, via: "argv" };
+  }
+  if (env.WORKER_MODE !== "") {
+    return { isWorker: true, via: "env" };
+  }
+  return { isWorker: false, via: "default" };
+}
 
-  logger.info({ env: env.NODE_ENV, isWorker }, "Starting ReachInbox backend");
+async function main() {
+  const { isWorker, via } = resolveMode();
+
+  logger.info(
+    { env: env.NODE_ENV, isWorker, modeVia: via },
+    "Starting ReachInbox backend",
+  );
 
   // Schema before anything that reads it. Reconciliation, the workers and every
   // request path query tables that this image's migrations create, so applying
@@ -38,7 +60,7 @@ async function main() {
     ]);
 
     logger.info(
-      { email: emailWorker.id, outbox: outboxWorker.id },
+      { email: emailWorker.id, outbox: outboxWorker.id, modeVia: via },
       "Worker mode: consuming email-scheduling and outbox-events",
     );
 
@@ -63,6 +85,8 @@ async function main() {
   }
 
   // API mode: serve HTTP only.
+
+  logger.info("API mode: serving HTTP");
 
   // Recover queue state from the authoritative database on boot.
   await reconcilePendingWork();

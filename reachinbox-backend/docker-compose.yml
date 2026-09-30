@@ -46,10 +46,14 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
+    # WORKER_MODE selects worker mode, so the flag is not needed. Kept anyway:
+    # two independent signals that agree are cheaper to debug than one, and
+    # either alone is enough.
     command: ["node", "dist/index.js", "--worker"]
     environment:
       - NODE_ENV=production
-      # Workers consume queues and serve no HTTP, so the probe must not curl.
+      # Selects worker mode. The probe then checks that this process is really
+      # not serving HTTP, rather than trusting the variable to be true.
       - WORKER_MODE=1
       - DATABASE_URL=postgresql://reachinbox:reachinbox@postgres:5432/reachinbox
       - REDIS_URL=redis://:reachinbox@redis:6379/0

@@ -36,9 +36,12 @@ EXPOSE 3000
 # not marked unhealthy simply because they consume queues instead of serving.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD if [ -n "$WORKER_MODE" ]; then \
-        node -e "process.exit(0)"; \
+        curl -fsS http://localhost:3000/health/worker || exit 1; \
       else \
         curl -fsS http://localhost:3000/health/live || exit 1; \
       fi
 
+# API mode by default. Worker services select worker mode with WORKER_MODE, so a
+# platform that runs this image's own CMD still starts an API replica rather
+# than a worker that consumes nothing.
 CMD ["node", "dist/index.js"]

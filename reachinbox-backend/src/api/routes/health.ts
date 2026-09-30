@@ -8,6 +8,25 @@ healthRouter.get("/live", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+/**
+ * Liveness for a process running in worker mode.
+ *
+ * A worker registers no HTTP listener, so this only ever answers on a worker
+ * that was started in API mode by mistake — which is exactly the failure this
+ * exists to catch. The previous check was `process.exit(0)` gated on the
+ * `WORKER_MODE` env var, which reported healthy for a process that was serving
+ * HTTP and consuming nothing.
+ *
+ * 404 here means the process is not serving HTTP, i.e. it really is a worker.
+ */
+healthRouter.get("/worker", (_req, res) => {
+  res.status(404).json({
+    status: "not_an_api",
+    message: "This process is serving HTTP, so it is not running as a worker.",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 healthRouter.get("/ready", async (_req, res) => {
   const checks: Record<string, boolean> = {};
 

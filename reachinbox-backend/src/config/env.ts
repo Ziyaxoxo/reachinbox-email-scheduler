@@ -40,6 +40,19 @@ const envSchema = z.object({
 
   WORKER_CONCURRENCY: z.string().transform(Number).default("5"),
 
+  // Selects worker mode. Present on worker services, absent on API services.
+  //
+  // This exists because mode was previously selected only by the `--worker` CLI
+  // flag, which is invisible to anything that does not control the start
+  // command: a platform that runs the image's own CMD starts the process in API
+  // mode, and the container then serves HTTP instead of consuming queues while
+  // still reporting healthy. An env var is set in the service definition, which
+  // is one place that is actually visible and reviewable.
+  //
+  // Any non-empty value means worker, matching the Dockerfile healthcheck, so
+  // WORKER_MODE=0 would be wrong: use an unset or empty value for API mode.
+  WORKER_MODE: z.string().default(""),
+
   // BullMQ dashboard (operator-only, never public).
   // Empty means "disabled": the dashboard refuses all access rather than
   // defaulting open, so a missing secret fails closed.
