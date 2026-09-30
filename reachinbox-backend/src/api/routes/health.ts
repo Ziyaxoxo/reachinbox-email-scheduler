@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../../db/client.js";
 import { env } from "../../config/env.js";
+import { getMode } from "../../domain/mode.js";
 
 export const healthRouter = Router();
 
@@ -9,15 +10,57 @@ healthRouter.get("/live", (_req, res) => {
 });
 
 /**
+ * The role this process actually took, for confirming a deploy.
+ *
+ * Exists because the container healthcheck structurally cannot check this. A
+ * worker has no HTTP listener, so the only evidence that a worker is healthy is
+ * that it is not answering — which means no probe can both confirm worker mode
+ * and avoid failing on a correctly-running worker. The Dockerfile probe is
+ * env-based for exactly that reason and cannot tell whether `resolveMode()`
+ * agreed with it.
+ *
+ * So this is the post-deploy check, and it has to be read as a pair:
+ *
+ *   - on the API service, `modeVia` should be `default`
+ *   - on the worker, the startup log should show `modeVia: "env"`
+ *
+ * A worker answering this route at all means it started in API mode and is
+ * consuming nothing, which is the failure worth catching. See `/health/worker`
+ * for that case, and note that a 404 from *this* endpoint means the build
+ * predates the route, not that anything is wrong.
+ *
+ * `workerModeRequested` is reported separately from `isWorker` so the
+ * disagreement case is legible: an env var that was set but did not win is
+ * exactly the situation that is otherwise invisible.
+ */
+healthRouter.get("/mode", (_req, res) => {
+  const { isWorker, via } = getMode();
+  res.json({
+    mode: isWorker ? "worker" : "api",
+    isWorker,
+    modeVia: via,
+    workerModeRequested: env.WORKER_MODE !== "",
+    pid: process.pid,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
  * Liveness for a process running in worker mode.
  *
  * A worker registers no HTTP listener, so this only ever answers on a worker
  * that was started in API mode by mistake — which is exactly the failure this
- * exists to catch. The previous check was `process.exit(0)` gated on the
- * `WORKER_MODE` env var, which reported healthy for a process that was serving
- * HTTP and consuming nothing.
+ * exists to catch.
  *
  * 404 here means the process is not serving HTTP, i.e. it really is a worker.
+ *
+ * This is a post-deploy check, not a container probe, and must never be wired
+ * into the Dockerfile HEALTHCHECK. A worker cannot answer it, so probing it
+ * fails every healthy worker; and on an API replica it returns 404, which
+ * `curl -f` treats as a failure anyway. The container probe is env-based for
+ * that reason, and cannot verify the resolved mode on its own. Confirm the mode
+ * with `GET /health/mode` on the API service, or the `modeVia` field in the
+ * worker's startup log.
  */
 healthRouter.get("/worker", (_req, res) => {
   res.status(404).json({

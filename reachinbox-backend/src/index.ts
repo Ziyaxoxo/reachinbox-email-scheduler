@@ -1,5 +1,6 @@
 import { createServer } from "./api/server.js";
 import { env } from "./config/env.js";
+import { publishMode } from "./domain/mode.js";
 import { logger } from "./observability/logger.js";
 import { runMigrations } from "./db/migrate.js";
 import { ensureIndex } from "./services/elasticsearch/client.js";
@@ -33,6 +34,10 @@ function resolveMode(): { isWorker: boolean; via: string } {
 
 async function main() {
   const { isWorker, via } = resolveMode();
+
+  // Published before anything can serve a request or fail, so a mode check
+  // never reports the pre-resolution default.
+  publishMode({ isWorker, via });
 
   logger.info(
     { env: env.NODE_ENV, isWorker, modeVia: via },
