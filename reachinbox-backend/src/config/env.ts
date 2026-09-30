@@ -14,6 +14,16 @@ const envSchema = z.object({
   SMTP_PORT: z.string().transform(Number).default("587"),
   SMTP_USER: z.string().default(""),
   SMTP_PASS: z.string().default(""),
+
+  // Explicit envelope From, for deployments that must appear to come from a
+  // specific address.
+  //
+  // Empty means "send as the account the credentials belong to", which is the
+  // only thing a shared relay mailbox is allowed to do. Override this only when
+  // SMTP_USER is a real mailbox the provider owns, because setting a From the
+  // provider does not own is how senders get rejected.
+  SMTP_FROM: z.string().default(""),
+
   // "ethereal" in every real environment; "stub" only for load/failure runs.
   SMTP_TRANSPORT: z.enum(["ethereal", "stub"]).default("ethereal"),
 

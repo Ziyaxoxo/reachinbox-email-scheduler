@@ -243,6 +243,7 @@ missing, the app prints exactly which and exits.
 | `SMTP_HOST` | `smtp.ethereal.email` | |
 | `SMTP_PORT` | `587` | |
 | `SMTP_TRANSPORT` | `ethereal` | Use `stub` only when running test suites |
+| `SMTP_FROM` | empty | Envelope sender. Empty means "send as the account `SMTP_USER` belongs to". See below. |
 | `DASHBOARD_TOKEN` | empty | Empty disables the BullMQ dashboard entirely |
 | `DASHBOARD_READ_ONLY` | `true` | Blocks anything except GET/HEAD/OPTIONS |
 | `WORKER_CONCURRENCY` | `5` | Jobs processed at once per worker |
@@ -250,6 +251,21 @@ missing, the app prints exactly which and exits.
 | `API_RATE_LIMIT_WINDOW_MS` | `60000` | The window above, in milliseconds |
 | `FRONTEND_URL` | `http://localhost:3001` | |
 | `MAX_RECIPIENTS_PER_SCHEDULE` | `1000` | |
+
+**Who the mail is sent as:** users schedule campaigns under their own address,
+but an SMTP provider will only send from the mailbox its credentials
+authenticate as. On a shared relay account like Ethereal those are different
+addresses, so the envelope sender is pinned to `SMTP_USER` and the user's
+address stays the identity in the UI. Set `SMTP_FROM` only when `SMTP_USER` is
+a real mailbox the provider owns.
+
+**Diagnosing a send failure:** `GET /health/smtp` reports the transport
+configuration with credentials reduced to present/absent, plus whether the
+provider has accepted them. `verified: false` with `userConfigured: true` means
+the credentials arrived and were refused; `userConfigured: false` means the env
+vars never reached the container. The `verifyError` string carries the SMTP
+response code, which is the part that matters: `530` means no credentials were
+offered, `535` means they were refused.
 
 **Google OAuth setup checklist:**
 

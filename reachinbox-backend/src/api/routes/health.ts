@@ -75,6 +75,28 @@ healthRouter.get("/worker", (_req, res) => {
   });
 });
 
+/**
+ * How the mail transport is configured, redacted.
+ *
+ * Exists because a misconfigured transport produces the worst kind of failure:
+ * a healthy service that reports no error anywhere, a dashboard full of normal
+ * rows, and `failed` recipients whose only explanation is one log line. The two
+ * causes have opposite fixes and differ by a single digit in the SMTP reply —
+ *
+ *   - `userConfigured: false` means the env vars never arrived; the fix is on
+ *     the platform, not the credentials.
+ *   - `userConfigured: true` with `verified: false` means they arrived and the
+ *     provider refused them; the credentials themselves are wrong.
+ *
+ * Credential values are never included, so this is safe to serve without auth.
+ * `verified` is null until the startup probe has completed, which is reported
+ * as unknown rather than guessed either way.
+ */
+healthRouter.get("/smtp", async (_req, res) => {
+  const { getSmtpTransport } = await import("../../services/smtp/transportFactory.js");
+  res.json(getSmtpTransport().describe());
+});
+
 healthRouter.get("/ready", async (_req, res) => {
   const checks: Record<string, boolean> = {};
 

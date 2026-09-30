@@ -48,8 +48,9 @@ npm run dev
 | `REDIS_URL` | Redis connection string |
 | `ELASTICSEARCH_URL` | Elasticsearch endpoint |
 | `SMTP_HOST` | Ethereal SMTP host |
-| `SMTP_USER` | Ethereal SMTP username |
+| `SMTP_USER` | Ethereal SMTP username. Also the envelope sender unless `SMTP_FROM` is set |
 | `SMTP_PASS` | Ethereal SMTP password |
+| `SMTP_FROM` | Optional explicit envelope sender |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `SLACK_CLIENT_ID` | Slack OAuth client ID |

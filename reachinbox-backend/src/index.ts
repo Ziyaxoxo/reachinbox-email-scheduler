@@ -54,6 +54,47 @@ function resolveMode(): { isWorker: boolean; servesHttp: boolean; via: string } 
   return { isWorker: false, servesHttp: true, via: "default" };
 }
 
+/**
+ * Log whether the mail transport is actually usable, and why not if it isn't.
+ *
+ * The response code is what makes this actionable, and it is a single digit:
+ * 530 means no credentials were offered at all, so the env vars never arrived;
+ * 535 means they arrived and the provider refused them. Both surface as the
+ * same generic nodemailer error code otherwise, which is why the raw reply is
+ * logged verbatim rather than reduced to a classification.
+ */
+async function reportSmtpReadiness(): Promise<void> {
+  const { getSmtpTransport } = await import("./services/smtp/transportFactory.js");
+  const transport = getSmtpTransport();
+  const description = transport.describe();
+
+  if (description.transport === "stub") {
+    logger.warn("SMTP transport is the stub: nothing is actually delivered");
+    return;
+  }
+
+  if (!description.userConfigured || !description.passConfigured) {
+    logger.error(
+      { ...description },
+      "SMTP credentials are missing: every send will fail with 530",
+    );
+    return;
+  }
+
+  const ok = await transport.verify();
+  if (ok) {
+    logger.info(
+      { ...transport.describe() },
+      "SMTP transport verified: the provider accepted the credentials",
+    );
+  } else {
+    logger.error(
+      { ...transport.describe() },
+      "SMTP transport rejected the credentials; sends will fail until fixed",
+    );
+  }
+}
+
 async function main() {
   const { isWorker, servesHttp, via } = resolveMode();
 
@@ -108,6 +149,16 @@ async function main() {
     retentionTimer.unref?.();
 
     void runRetention();
+
+    // Prove the transport can authenticate at boot, before any recipient is
+    // charged a failed attempt. Without this the only evidence of a broken
+    // credential is a wall of `failed` rows minutes later, all carrying the same
+    // opaque EENVELOPE code, with the real reply buried in the deploy log.
+    //
+    // Not awaited: a provider that is briefly unreachable must not stop the
+    // worker from consuming, because the queue is the source of truth and this
+    // is only a report.
+    void reportSmtpReadiness();
 
     logger.info("Worker ready");
   }

@@ -3,6 +3,7 @@ import type {
   SmtpMessage,
   SmtpResult,
   SmtpError,
+  SmtpDescription,
 } from "./transport.js";
 import { logger } from "../../observability/logger.js";
 import { redis } from "../rateLimiter.js";
@@ -148,5 +149,24 @@ export class StubTransport implements SmtpTransport {
 
   async verify(): Promise<boolean> {
     return true;
+  }
+
+  /**
+   * The stub has no provider and therefore no configuration to misreport.
+   * `verified` stays true because reaching this code path at all means the
+   * worker is running, which is what a caller of `/health/smtp` is asking about.
+   */
+  describe(): SmtpDescription {
+    return {
+      transport: "stub",
+      host: null,
+      port: null,
+      secure: false,
+      userConfigured: false,
+      passConfigured: false,
+      fromSource: "requested",
+      verified: true,
+      verifyError: null,
+    };
   }
 }
